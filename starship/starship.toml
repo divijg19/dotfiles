@@ -1,0 +1,132 @@
+add_newline = false
+
+format = """
+$username$directory$git_branch$git_status$python$nodejs$bun$golang$rust$zig$fill$cmd_duration$time
+$character
+"""
+
+[custom.git_dirty]
+when = "git diff --quiet || exit 1"
+command = "echo dirty"
+
+[custom.git_ahead]
+when = "git status -sb | grep -q '\\[ahead'"
+command = "echo ahead"
+
+[custom.git_conflict]
+when = "git diff --name-only --diff-filter=U | grep -q ."
+command = "echo conflict"
+
+[custom.git_safe]
+when = "! git diff --quiet && false"
+command = "false"
+
+[custom.git_danger]
+when = "git diff --name-only --diff-filter=U | grep -q ."
+format = "[󰊢 $git_status](bg:#bf616a fg:#2e3440)[](fg:#bf616a bg:#5e81ac)"
+
+[custom.git_dirty_block]
+when = "git diff --quiet || exit 1"
+format = "[󰊢 $git_status](bg:#ebcb8b fg:#2e3440)[](fg:#ebcb8b bg:#5e81ac)"
+
+[python]
+symbol = "🐍"
+style = "fg:#ebcb8b"
+format = "[ $symbol $version ]($style)"
+
+[nodejs]
+symbol = "🟢"
+style = "fg:#a3be8c"
+format = "[ $symbol $version ]($style)"
+
+[bun]
+symbol = "🥟"
+style = "fg:#b48ead"
+format = "[ $symbol $version ]($style)"
+
+[golang]
+symbol = "🐹"
+style = "fg:#88c0d0"
+format = "[ $symbol $version ]($style)"
+
+[rust]
+symbol = "🦀"
+style = "fg:#bf616a"
+format = "[ $symbol $version ]($style)"
+
+[zig]
+symbol = "⚡"
+style = "fg:#d08770"
+format = "[ $symbol $version ]($style)"
+
+[fill]
+symbol = " "
+style = "bg:none"
+
+# -----------------------------
+# Identity & location
+# -----------------------------
+[username]
+show_always = true
+style_user = "bg:#d08770 fg:#2e3440"
+format = "[](fg:#d08770)[$user]($style)[](fg:#d08770 bg:#2e3440)"
+
+[directory]
+style = "bg:#2e3440 fg:#88c0d0"
+format = "[ 󰉋 $path]($style)[](fg:#2e3440 bg:#434c5e)"
+
+# -----------------------------
+# Git
+# -----------------------------
+[git_branch]
+symbol = ""
+style = "bg:#434c5e fg:#a3be8c"
+format = "[ $symbol $branch]($style)[](fg:#434c5e bg:#4c566a)"
+
+[git_status]
+style = "bg:#4c566a fg:#d8dee9"
+format = "[ 󰊢 $all_status$ahead_behind]($style)[](fg:#4c566a)"
+
+conflicted = "[!](fg:#bf616a bg:#4c566a) "
+modified   = "[●](fg:#ebcb8b bg:#4c566a) "
+staged     = "[+](fg:#a3be8c bg:#4c566a) "
+untracked  = "[?](fg:#88c0d0 bg:#4c566a) "
+deleted    = "[✖](fg:#bf616a bg:#4c566a) "
+renamed    = "[➜](fg:#d08770 bg:#4c566a) "
+stashed    = "[≡](fg:#b48ead bg:#4c566a) "
+
+ahead      = "[⇡](fg:#a3be8c bg:#4c566a) "
+behind     = "[⇣](fg:#bf616a bg:#4c566a) "
+
+# -----------------------------
+# Performance & Time
+# -----------------------------
+
+[cmd_duration]
+min_time = 2000
+style = "bg:#5e81ac fg:#eceff4"
+format = "[ $duration ]($style)[](fg:#5e81ac bg:#8f5fd7)"
+
+[time]
+disabled = false
+time_format = "%H:%M"
+style = "bg:#8f5fd7 fg:#eceff4"
+format = "[  $time]($style)[](fg:#8f5fd7)"
+
+
+# -----------------------------
+# Prompt character
+# -----------------------------
+[character]
+success_symbol = "[❯](fg:#88c0d0)"
+error_symbol = "[❯❯](fg:#bf616a)"
+
+
+# -----------------------------
+# Error status
+# -----------------------------
+[status]
+disabled = false
+format = " [$symbol$status]($style)"
+symbol = "✖"
+style = "bold red"
