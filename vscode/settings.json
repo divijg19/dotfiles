@@ -1,0 +1,115 @@
+{
+    "json.schemaDownload.trustedDomains": {
+        "https://schemastore.azurewebsites.net/": true,
+        "https://raw.githubusercontent.com/microsoft/vscode/": true,
+        "https://raw.githubusercontent.com/devcontainers/spec/": true,
+        "https://www.schemastore.org/": true,
+        "https://json.schemastore.org/": true,
+        "https://json-schema.org/": true,
+        "https://developer.microsoft.com/json-schemas/": true,
+        "https://biomejs.dev": true
+    },
+  "explorer.confirmDragAndDrop": false,
+  "workbench.iconTheme": "vscode-icons",
+  "explorer.confirmDelete": false,
+  "vsicons.dontShowNewVersionMessage": true,
+
+// ========================
+// Disable Integrated Terminal (your requirement)
+// ========================
+"terminal.integrated.shellIntegration.enabled": false,
+"terminal.integrated.shellIntegration.decorationsEnabled": "never",
+"terminal.integrated.allowChords": true,
+"terminal.integrated.enableMultiLinePasteWarning": "never",
+"terminal.integrated.fontFamily": "Cascadia Mono NF, monospace",
+"terminal.integrated.fontSize": 14,
+"terminal.integrated.lineHeight": 1.2,
+"terminal.explorerKind": "external",
+"terminal.external.linuxExec": "ghostty",
+"terminal.integrated.defaultProfile.linux": "fish",
+"terminal.integrated.commandsToSkipShell": [
+  "workbench.action.terminal.openNativeConsole"
+],
+
+// ========================
+// Editor Behavior
+// ========================
+"editor.fontLigatures": true,
+"editor.codeActionsOnSave": {
+"source.fixAll": "always",
+"source.organizeImports": "always"
+},
+
+"editor.cursorSmoothCaretAnimation": "on",
+"editor.smoothScrolling": true,
+
+// ========================
+// File Behavior
+// ========================
+"files.autoSave": "afterDelay",
+"files.autoSaveDelay": 800,
+"files.trimTrailingWhitespace": true,
+"files.insertFinalNewline": true,
+
+// ========================
+// Python (uv + ruff + ty)
+// ========================
+"python.defaultInterpreterPath": "python",
+"python.terminal.activateEnvironment": false,
+
+"ruff.enable": true,
+"ruff.organizeImports": true,
+"ruff.fixAll": true,
+
+"[python]": {
+"editor.defaultFormatter": "charliermarsh.ruff",
+"editor.formatOnSave": true
+},
+
+// ========================
+// Go
+// ========================
+"[go]": {
+"editor.defaultFormatter": "golang.go",
+"editor.formatOnSave": true
+},
+
+"go.useLanguageServer": true,
+"go.formatTool": "gofmt",
+"go.lintTool": "staticcheck",
+
+// ========================
+// TypeScript (bun + biome)
+// ========================
+"[typescript]": {
+"editor.defaultFormatter": "biomejs.biome",
+"editor.formatOnSave": true
+},
+
+"[typescriptreact]": {
+"editor.defaultFormatter": "biomejs.biome",
+"editor.formatOnSave": true
+},
+
+"biome.enabled": true,
+
+// ========================
+// JSON
+// ========================
+"[json]": {
+"editor.defaultFormatter": "vscode.json-language-features"
+},
+
+// ========================
+// Rust
+// ========================
+"[rust]": {
+"editor.defaultFormatter": "rust-lang.rust-analyzer"
+},
+
+// ========================
+// Performance
+// ========================
+"extensions.ignoreRecommendations": true,
+"telemetry.telemetryLevel": "off"
+}

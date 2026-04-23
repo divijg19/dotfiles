@@ -1,0 +1,51 @@
+// Place your key bindings in this file to override the defaults
+
+[
+// Toggle singleton terminal (won’t spawn new)
+{
+    "key": "ctrl+`",
+    "command": "workbench.action.terminal.toggleTerminal"
+},
+
+// Open external terminal (Ghostty)
+{
+    "key": "ctrl+shift+`",
+    "command": "workbench.action.terminal.openNativeConsole",
+},
+
+// New file
+{
+    "key": "ctrl+n",
+    "command": "explorer.newFile",
+    "when": "explorerViewletVisible && filesExplorerFocus"
+},
+
+// New folder
+{
+    "key": "ctrl+. shift+n",
+    "command": "explorer.newFolder",
+    "when": "explorerViewletVisible && filesExplorerFocus"
+},
+
+// New file / untitled → Alt+N
+{
+    "key": "alt+n",
+    "command": "workbench.action.files.newUntitledFile"
+},
+
+// Kill current terminal
+{
+    "key": "ctrl+shift+delete",
+    "command": "workbench.action.terminal.kill"
+},
+{
+    "key": "ctrl+shift+`",
+    "command": "-workbench.action.terminal.new",
+    "when": "terminalProcessSupported || terminalWebExtensionContributedProfile"
+},
+{
+    "key": "ctrl+shift+alt+`",
+    "command": "-workbench.action.terminal.newInNewWindow",
+    "when": "terminalHasBeenCreated || terminalProcessSupported"
+}
+]
