@@ -94,5 +94,5 @@
   // ========================
   "extensions.ignoreRecommendations": true,
   "telemetry.telemetryLevel": "off",
-  "biome.requireConfiguration": true,
+  "biome.requireConfiguration": true
 }
