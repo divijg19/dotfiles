@@ -1,0 +1,122 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 36,
+  "spacing": 0,
+  "modules-left": [
+    "clock"
+  ],
+  "modules-center": [
+    "hyprland/workspaces"
+  ],
+  "modules-right": [
+    "network",
+    "battery",
+    "pulseaudio",
+    "power-profiles-daemon",
+    "backlight",
+    "mpris",
+    "tray"
+  ],
+  /* ---------- CLOCK + CALENDAR ---------- */
+  "clock": {
+    "format": "{:%a %d %b  %H:%M}",
+    "tooltip-format": "<tt>{calendar}</tt>",
+    "calendar": {
+      "mode": "month",
+      "weeks-pos": "right",
+      "on-scroll": 1
+    }
+  },
+  /* ---------- WORKSPACES ---------- */
+  "hyprland/workspaces": {
+    "format": "{name}",
+    "all-outputs": true,
+    "disable-scroll": false
+  },
+  /* ---------- RIGHT UTILITIES ---------- */
+  "scroll-step": 5,
+  "network": {
+    "format-wifi": " ",
+    "format-ethernet": "󰈁",
+    "format-disconnected": "󰤭",
+    "tooltip": false
+  },
+  "pulseaudio": {
+    "format": "{icon} {volume}%",
+    "format-icons": {
+      "headphone": "",
+      "hands-free": "󰋎",
+      "headset": "󰋋",
+      "phone": "",
+      "portable": "󰄝",
+      "car": "",
+      "default": [
+        "",
+        "",
+        ""
+      ],
+      "format-muted": "󰝟 Muted",
+      "on-click": "pavucontrol",
+      "tooltip": false
+    }
+  },
+  "backlight": {
+    "format": "󰖨 {percent}%",
+    "scroll-step": 5,
+    "tooltip": false
+  },
+  "mpris": {
+    "format": "{player_icon} {title}",
+    "format-paused": "{player_icon} Paused",
+    "tooltip": false,
+    "player-icons": {
+      "spotify": "",
+      "brave": ""
+    },
+    "on-click": "playerctl play-pause",
+    "on-scroll-up": "playerctl next",
+    "on-scroll-down": "playerctl previous",
+    "max-length": 20
+  },
+  "tray": {
+    "icon-size": 14,
+    "spacing": 12,
+    "reverse-direction": false,
+    "tooltip": false
+  },
+  "power-profiles-daemon": {
+    "format": "{icon}",
+    "tooltip": false,
+    "format-icons": {
+      "performance": "󰓅",
+      "balanced": "󰾅",
+      "power-saver": "󰾆"
+    }
+  },
+  "battery": {
+    "states": {
+      "warning": 30,
+      "critical": 15
+    },
+    "format": "{icon} {capacity}%",
+    "format-charging": "󰂄 {capacity}%",
+    "network": {
+      "format-wifi": "  {signalStrength}%",
+      "format-ethernet": "󰈁",
+      "format-disconnected": "󰤭",
+      "tooltip": false
+    },
+    "format-plugged": "󰚥 {capacity}%",
+    "format-full": "󰁹 {capacity}%",
+    "format-alt": "{icon} {time}",
+    "tooltip": false,
+    "format-icons": [
+      "󰁺",
+      "󰁻",
+      "󰁼",
+      "󰁽",
+      "󰁾"
+    ]
+  }
+}

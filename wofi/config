@@ -1,0 +1,5 @@
+show=drun
+allow_images=true
+image_size=32
+gtk_dark=true
+prompt=Search
