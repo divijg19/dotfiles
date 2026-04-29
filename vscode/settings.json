@@ -93,5 +93,10 @@
   // ========================
   "extensions.ignoreRecommendations": true,
   "telemetry.telemetryLevel": "off",
-  "biome.requireConfiguration": true
+  "biome.requireConfiguration": true,
+  "workbench.startupEditor": "none",
+  "zig.zls.enabled": "on",
+  "[css]": {
+    "editor.defaultFormatter": "vscode.css-language-features"
+  }
 }
