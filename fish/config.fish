@@ -37,3 +37,9 @@ alias dnfundo "sudo dnf history undo"
 
 alias cls clear
 alias ls "eza --group-directories-first"
+
+# ----- local functions -----
+
+for file in ~/.config/fish/functions/local/*.fish
+    source $file
+end
