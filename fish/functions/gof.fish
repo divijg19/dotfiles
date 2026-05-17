@@ -1,0 +1,3 @@
+function gof
+    go fmt ./...
+end
