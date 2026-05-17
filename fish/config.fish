@@ -16,6 +16,7 @@ set -gx LESS -R
 
 # ----- aliases -----
 
+alias gt "git tag"
 alias gs "git status"
 alias gl "git log --oneline --graph --decorate"
 alias gp "git push"
