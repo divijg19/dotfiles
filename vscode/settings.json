@@ -54,19 +54,19 @@
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff"
   },
-    "python.defaultInterpreterPath": "python",
-    "python.terminal.activateEnvironment": false,
-    "ruff.enable": true,
-    "ruff.organizeImports": true,
-    "ruff.fixAll": true,
+  "python.defaultInterpreterPath": "python",
+  "python.terminal.activateEnvironment": false,
+  "ruff.enable": true,
+  "ruff.organizeImports": true,
+  "ruff.fixAll": true,
   // ========================
   // Go
   // ========================
   "[go]": {
     "editor.defaultFormatter": "golang.go"
   },
-    "go.useLanguageServer": true,
-    "go.formatTool": "gofmt",
+  "go.useLanguageServer": true,
+  "go.formatTool": "gofmt",
   // ========================
   // TypeScript (bun + biome)
   // ========================
@@ -112,5 +112,6 @@
   // Performance
   // ========================
   "extensions.ignoreRecommendations": true,
-  "telemetry.telemetryLevel": "off"
+  "telemetry.telemetryLevel": "off",
+  "explorer.confirmPasteNative": false
 }
