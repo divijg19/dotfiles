@@ -3,11 +3,8 @@ if status is-interactive
 
     function __zoxide_init --on-event fish_prompt
         functions -e __zoxide_init
-        zoxide init fish | source
-    end
 
-    function __fzf_init --on-event fish_prompt
-        functions -e __fzf_init
+        zoxide init fish | source
         fzf --fish | source
     end
 end
