@@ -66,7 +66,8 @@
     "editor.defaultFormatter": "golang.go"
   },
   "go.useLanguageServer": true,
-  "go.formatTool": "gofmt",
+  "go.formatTool": "gofmt", 
+  "go.toolsManagement.autoUpdate": true,
   // ========================
   // TypeScript (bun + biome)
   // ========================
