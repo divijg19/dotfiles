@@ -10,6 +10,129 @@ local last_output = {
 local main_buf = nil
 
 -- ================================
+-- 📋 CONTEXT
+-- ================================
+local function ctx()
+  return {
+    file = vim.fn.expand("%:p"),
+    filetype = vim.bo.filetype,
+    cwd = vim.fn.expand("%:p:h"),
+    pid = vim.uv.os_getpid(),
+  }
+end
+
+-- ================================
+-- 🗂️ LANGUAGE ADAPTERS
+-- ================================
+local languages = {}
+
+languages.c = {
+  run = function(c)
+    local outfile = "/tmp/nvim_run_" .. c.pid
+    return {
+      phases = {
+        { argv = { "gcc", c.file, "-o", outfile } },
+        { argv = { outfile } },
+      },
+    }
+  end,
+  build = function(c)
+    local outfile = c.file:match("^(.+)%.[^.]*$") or c.file
+    return {
+      phases = {
+        { argv = { "gcc", c.file, "-o", outfile } },
+      },
+    }
+  end,
+}
+
+languages.go = {
+  run = function(c)
+    return {
+      phases = {
+        { argv = { "go", "run", c.file } },
+      },
+    }
+  end,
+  build = function(c)
+    return {
+      phases = {
+        { argv = { "go", "build" } },
+      },
+    }
+  end,
+  test = function(c)
+    return {
+      phases = {
+        { argv = { "go", "test", "./..." } },
+      },
+    }
+  end,
+}
+
+languages.lua = {
+  run = function(c)
+    return {
+      phases = {
+        { argv = { "lua", c.file } },
+      },
+    }
+  end,
+}
+
+-- ================================
+-- 🏃 INTERACTIVE EXECUTOR
+-- ================================
+---@param action { phases: { argv: string[] }[] }
+---@param opts? { cwd?: string }
+---@param callback? fun(success: boolean, code?: integer)
+local function execute(action, opts, callback)
+  opts = opts or {}
+  local cwd = opts.cwd or vim.uv.cwd()
+
+  vim.cmd("botright 12split")
+  local term_buf = vim.api.nvim_get_current_buf()
+
+  local phases = action.phases
+  local phase_idx = 1
+
+  local function next_phase()
+    if phase_idx > #phases then
+      if callback then
+        vim.schedule(function() callback(true) end)
+      end
+      return
+    end
+
+    local phase = phases[phase_idx]
+    phase_idx = phase_idx + 1
+
+    vim.fn.jobstart(phase.argv, {
+      term = true,
+      cwd = cwd,
+      on_exit = function(_, code)
+        vim.schedule(function()
+          if code == 0 then
+            vim.bo[term_buf].modified = false
+            next_phase()
+          else
+            if callback then
+              callback(false, code)
+            end
+          end
+        end)
+      end,
+    })
+  end
+
+  next_phase()
+
+  vim.keymap.set("t", "<Esc>", [[<C-\><C-n>:close<CR>]], { buf = term_buf })
+  vim.keymap.set("t", "q", [[<C-\><C-n>:close<CR>]], { buf = term_buf })
+  vim.cmd("startinsert")
+end
+
+-- ================================
 -- 🪟 EPHEMERAL OUTPUT SPLIT
 -- ================================
 local function open_output_buf(lines)
@@ -43,10 +166,10 @@ local function open_output_buf(lines)
   end
 
   -- 🔥 true “any key” feel (without blocking)
-  vim.keymap.set("n", "<Esc>", close, { buffer = buf, nowait = true })
-  vim.keymap.set("n", "q", close, { buffer = buf, nowait = true })
-  vim.keymap.set("n", "<CR>", close, { buffer = buf, nowait = true })
-  vim.keymap.set("n", "<Space>", close, { buffer = buf, nowait = true })
+  vim.keymap.set("n", "<Esc>", close, { buf = buf, nowait = true })
+  vim.keymap.set("n", "q", close, { buf = buf, nowait = true })
+  vim.keymap.set("n", "<CR>", close, { buf = buf, nowait = true })
+  vim.keymap.set("n", "<Space>", close, { buf = buf, nowait = true })
 
   -- optional: auto-focus top
   vim.cmd("normal! gg")
@@ -58,119 +181,36 @@ end
 -- ⚡ ASYNC RUNNER
 -- ================================
 local function run_job(cmd, label)
-  local output = {}
+  local function on_exit(obj)
+    local lines = {}
+    local function add(text)
+      if text and text ~= "" then
+        for line in text:gmatch("[^\n]+") do
+          table.insert(lines, line)
+        end
+      end
+    end
+    add(obj.stdout)
+    add(obj.stderr)
+
+    last_output = {
+      lines = (#lines > 0) and lines or { "[No output]" },
+      mode = "job",
+    }
+
+    if obj.code == 0 then
+      vim.notify("✅ " .. label .. " succeeded", vim.log.levels.INFO)
+      if #lines > 0 then
+        open_output_buf(lines)
+      end
+    else
+      vim.notify("❌ " .. label .. " failed (code " .. obj.code .. ")", vim.log.levels.ERROR)
+      open_output_buf(lines)
+    end
+  end
 
   vim.notify("▶ " .. label, vim.log.levels.INFO)
-
-  vim.fn.jobstart(cmd, {
-    stdout_buffered = true,
-    stderr_buffered = true,
-
-    on_stdout = function(_, data)
-      if not data then
-        return
-      end
-      for _, line in ipairs(data) do
-        if line ~= "" then
-          table.insert(output, line)
-        end
-      end
-    end,
-
-    on_stderr = function(_, data)
-      if not data then
-        return
-      end
-      for _, line in ipairs(data) do
-        if line ~= "" then
-          table.insert(output, line)
-        end
-      end
-    end,
-
-    on_exit = function(_, code)
-      vim.schedule(function()
-        last_output = {
-          lines = (#output > 0) and vim.deepcopy(output) or { "[No output]" },
-          mode = "job",
-        }
-
-        if code == 0 then
-          vim.notify("✅ " .. label .. " succeeded", vim.log.levels.INFO)
-
-          -- ✅ ONLY show output if something exists
-          if #output > 0 then
-            open_output_buf(output)
-          end
-        else
-          vim.notify("❌ " .. label .. " failed (code " .. code .. ")", vim.log.levels.ERROR)
-
-          -- ❗ ALWAYS show errors
-          open_output_buf(output)
-        end
-      end)
-    end,
-  })
-end
-
--- ================================
--- 🖥️ TERMINAL RUNNER
--- ================================
-local function run_in_terminal(cmd)
-  last_output = { lines = nil, mode = "term" }
-  local cwd = vim.fn.expand("%:p:h")
-
-  vim.cmd("botright 12split")
-  vim.cmd("lcd " .. vim.fn.fnameescape(cwd))
-
-  vim.cmd("terminal bash -c " .. vim.fn.shellescape(cmd))
-  vim.cmd("startinsert")
-
-  -- scoped buffer
-  local term_buf = vim.api.nvim_get_current_buf()
-
-  -- close mappings
-  vim.keymap.set("t", "<Esc>", [[<C-\><C-n>:close<CR>]], { buffer = term_buf })
-  vim.keymap.set("t", "q", [[<C-\><C-n>:close<CR>]], { buffer = term_buf })
-
-  -- notify on exit
-  vim.api.nvim_create_autocmd("TermClose", {
-    buffer = term_buf,
-    once = true,
-    callback = function()
-      vim.notify("✔  Run finished", vim.log.levels.INFO)
-    end,
-  })
-end
-
--- ================================
--- ⚙️ COMMAND RESOLUTION
--- ================================
-local function run_cmd()
-  local file = vim.fn.shellescape(vim.fn.expand("%:p"))
-
-  if vim.bo.filetype == "c" then
-    local outfile = "/tmp/nvim_run_" .. vim.fn.getpid()
-    return "gcc " .. file .. " -o " .. outfile .. " && " .. outfile, "Run (C)"
-  elseif vim.bo.filetype == "go" then
-    return "go run " .. file, "Run (Go)"
-  end
-end
-
-local function build_cmd()
-  if vim.bo.filetype == "c" then
-    local file = vim.fn.shellescape(vim.fn.expand("%:p"))
-    local out = vim.fn.shellescape(vim.fn.expand("%:p:r"))
-    return "gcc " .. file .. " -o " .. out, "Compile (C)"
-  elseif vim.bo.filetype == "go" then
-    return "go build", "Build (Go)"
-  end
-end
-
-local function test_cmd()
-  if vim.bo.filetype == "go" then
-    return "go test ./...", "Tests (Go)"
-  end
+  vim.system(cmd, { text = true }, on_exit)
 end
 
 -- ================================
@@ -180,28 +220,39 @@ end
 -- ⚡ Run
 keymap("n", "<leader>cx", function()
   vim.cmd("write")
-  local cmd, label = run_cmd()
+  local c = ctx()
+  local lang = languages[c.filetype]
+  local action = lang and lang.run and lang.run(c)
 
-  if not cmd then
-    vim.notify("Unsupported filetype", vim.log.levels.WARN)
+  if action then
+    last_output = { lines = nil, mode = "term" }
+    vim.notify("▶ Run (" .. c.filetype .. ")", vim.log.levels.INFO)
+    execute(action, { cwd = c.cwd }, function(success, code)
+      if success then
+        vim.notify("✔ Run finished", vim.log.levels.INFO)
+      else
+        vim.notify("❌ Run failed (code " .. code .. ")", vim.log.levels.ERROR)
+      end
+    end)
     return
   end
 
-  vim.notify("▶ " .. label, vim.log.levels.INFO)
-  run_in_terminal(cmd)
+  vim.notify("Unsupported filetype", vim.log.levels.WARN)
 end, { desc = "Run (Terminal)" })
 
 -- 🧱 Compile
 keymap("n", "<leader>cc", function()
   vim.cmd("write")
-  local cmd, label = build_cmd()
+  local c = ctx()
+  local lang = languages[c.filetype]
+  local action = lang and lang.build and lang.build(c)
 
-  if not cmd then
-    vim.notify("Unsupported filetype", vim.log.levels.WARN)
+  if action then
+    run_job(action.phases[1].argv, "Build (" .. c.filetype .. ")")
     return
   end
 
-  run_job(cmd, label)
+  vim.notify("Unsupported filetype", vim.log.levels.WARN)
 end, { desc = "Compile" })
 
 -- 🔁 Recall
@@ -217,15 +268,16 @@ end, { desc = "Recall" })
 
 -- 🧪 Tests
 keymap("n", "<leader>t", function()
-  local cmd, label = test_cmd()
+  local c = ctx()
+  local lang = languages[c.filetype]
+  local action = lang and lang.test and lang.test(c)
 
-  if not cmd then
-    vim.notify("No tests configured", vim.log.levels.INFO)
+  if action then
+    run_job(action.phases[1].argv, "Test (" .. c.filetype .. ")")
     return
   end
 
-  vim.notify("🧪 " .. label, vim.log.levels.INFO)
-  run_job(cmd, label)
+  vim.notify("No tests configured", vim.log.levels.INFO)
 end, { desc = "Tests" })
 
 -- ================================
@@ -267,3 +319,5 @@ keymap("n", "<C-`>", function()
   local cwd = vim.fn.expand("%:p:h")
   vim.fn.jobstart({ "ghostty" }, { cwd = cwd, detach = true })
 end, { desc = "Ghostty (cwd)" })
+
+
