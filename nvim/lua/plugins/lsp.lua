@@ -12,12 +12,7 @@ return {
               diagnostics = {
                 globals = { "love" },
               },
-              workspace = {
-                checkThirdParty = false,
-              },
-              hint = {
-                enable = true,
-              },
+
             },
           },
         },
