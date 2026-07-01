@@ -1,0 +1,17 @@
+[
+  // Open external terminal (Ghostty)
+  {
+    "key": "ctrl+shift+`",
+    "command": "terminal.open_external"
+  },
+  // New untitled file
+  {
+    "key": "alt+n",
+    "command": "file.new_untitled"
+  },
+  // Kill current terminal
+  {
+    "key": "ctrl+shift+delete",
+    "command": "terminal.kill"
+  }
+]
