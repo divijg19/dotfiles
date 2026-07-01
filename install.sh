@@ -6,19 +6,48 @@ DOTFILES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 backup() {
   if [ -e "$1" ] && [ ! -L "$1" ]; then
-    echo "Backing up $1 → $1.bak"
-    mv "$1" "$1.bak"
+    local ts
+    ts="$(date +%Y%m%d-%H%M%S)"
+    echo "Backing up $1 → $1.bak-$ts"
+    mv "$1" "$1.bak-$ts"
   fi
 }
 
 link() {
-  src="$1"
-  dest="$2"
+  local src="$1"
+  local dest="$2"
 
+  # Ensure parent directory exists
+  mkdir -p "$(dirname "$dest")"
+
+  # Resolve source to absolute path
+  src="$(cd "$(dirname "$src")" && pwd)/$(basename "$src")"
+
+  # Destination does not exist → create symlink
+  if [ ! -e "$dest" ] && [ ! -L "$dest" ]; then
+    echo "Linking $dest → $src"
+    ln -s "$src" "$dest"
+    return
+  fi
+
+  # Destination is a symlink → check if it's the correct one
+  if [ -L "$dest" ]; then
+    local target
+    target="$(readlink "$dest")"
+    if [ "$target" = "$src" ]; then
+      # Already the correct symlink — nothing to do
+      return
+    fi
+    # Wrong or broken symlink — replace it
+    echo "Linking $dest → $src"
+    ln -sfn "$src" "$dest"
+    return
+  fi
+
+  # Regular file or directory — back it up first
   backup "$dest"
-
   echo "Linking $dest → $src"
-  ln -sfn "$src" "$dest"
+  ln -s "$src" "$dest"
 }
 
 mkdir -p ~/.config
@@ -28,6 +57,7 @@ mkdir -p ~/.config/Code/User
 link "$DOTFILES/fish" ~/.config/fish
 link "$DOTFILES/nvim" ~/.config/nvim
 link "$DOTFILES/ghostty" ~/.config/ghostty
+link "$DOTFILES/zed" ~/.config/zed
 
 # Starship
 link "$DOTFILES/starship/starship.toml" ~/.config/starship.toml
