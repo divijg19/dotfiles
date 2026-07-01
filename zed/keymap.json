@@ -1,17 +1,17 @@
 [
-  // Open external terminal (Ghostty)
+  // New untitled file (VS Code: alt+n → workbench.action.files.newUntitledFile)
   {
-    "key": "ctrl+shift+`",
-    "command": "terminal.open_external"
+    "context": "Workspace",
+    "bindings": {
+      "alt-n": "workspace::NewFile"
+    }
   },
-  // New untitled file
+  // Close/kill current terminal (VS Code: ctrl+shift+delete → workbench.action.terminal.kill)
+  // In Zed, this closes the terminal pane when focused.
   {
-    "key": "alt+n",
-    "command": "file.new_untitled"
-  },
-  // Kill current terminal
-  {
-    "key": "ctrl+shift+delete",
-    "command": "terminal.kill"
+    "context": "Terminal",
+    "bindings": {
+      "ctrl-shift-delete": "pane::CloseActiveItem"
+    }
   }
 ]
