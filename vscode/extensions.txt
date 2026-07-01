@@ -1,0 +1,16 @@
+astral-sh.ty
+biomejs.biome
+bradlc.vscode-tailwindcss
+charliermarsh.ruff
+dart-code.dart-code
+dart-code.flutter
+editorconfig.editorconfig
+fill-labs.dependi
+github.vscode-github-actions
+golang.go
+ms-python.python
+openai.chatgpt
+rust-lang.rust-analyzer
+stylelint.vscode-stylelint
+vscode-icons-team.vscode-icons
+ziglang.vscode-zig
