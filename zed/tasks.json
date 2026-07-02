@@ -2,7 +2,7 @@
   {
     "label": "Open Project Shell",
     "command": "ghostty",
-    "args": ["$ZED_WORKTREE_ROOT"],
+    "args": ["--working-directory=$ZED_WORKTREE_ROOT"],
     "use_new_terminal": true,
     "reveal": "never",
     "hide": "always",
