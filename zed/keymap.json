@@ -1,13 +1,14 @@
 [
-  // New untitled file (VS Code: alt+n → workbench.action.files.newUntitledFile)
+  // Open Ghostty for actual development
+  // (overrides default ctrl-~ → workspace::NewTerminal)
   {
     "context": "Workspace",
     "bindings": {
-      "alt-n": "workspace::NewFile"
+      "ctrl-~": ["task::Spawn", { "task_name": "Open Project Shell" }]
     }
   },
-  // Close/kill current terminal (VS Code: ctrl+shift+delete → workbench.action.terminal.kill)
-  // In Zed, this closes the terminal pane when focused.
+  // ── Keep ──
+  // Kill/close terminal pane (explicit workflow preference)
   {
     "context": "Terminal",
     "bindings": {

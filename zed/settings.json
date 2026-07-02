@@ -1,51 +1,39 @@
-// Zed settings
-//
-// For information on how to configure Zed, see the Zed
-// documentation: https://zed.dev/docs/configuring-zed
-//
-// To see all of Zed's default settings without changing your
-// custom settings, run `zed: open default settings` from the
-// command palette (cmd-shift-p / ctrl-shift-p)
+// ── Editor ──
+// Only explicit deviations from Zed defaults
 {
-  // Editor behavior (migrated from VS Code)
   "autosave": "on_focus_change",
-  "format_on_save": "on",
-  "trim_trailing_whitespace": true,
-  "ensure_final_newline": true,
+  "vim_mode": true,
   "terminal": {
     "font_family": "Cascadia Mono NF",
-    "font_size": 14,
-    "external": {
-      "command": "ghostty"
+    "font_size": 14
+  },
+  "session": { "trust_all_worktrees": true },
+  "telemetry": { "diagnostics": false, "metrics": false },
+
+  // ── Language Policy ──
+  // Only languages whose behavior intentionally differs from Zed defaults
+  "languages": {
+    "TypeScript": {
+      "formatter": { "language_server": { "name": "biome" } }
+    },
+    "TSX": {
+      "formatter": { "language_server": { "name": "biome" } }
     }
   },
-  "telemetry": {
-    "diagnostics": false,
-    "metrics": false
+
+  // ── Workflow ──
+  "theme": {
+    "mode": "system",
+    "light": "Ayu Dark",
+    "dark": "Shades Of Purple (Super Dark)"
   },
-  // Existing Zed preferences
   "icon_theme": {
     "mode": "dark",
     "light": "Zed (Default)",
     "dark": "VSCode Icons for Zed (Dark Official Icons)"
   },
-  "session": {
-    "trust_all_worktrees": true
-  },
-  "vim_mode": true,
   "agent_servers": {
-    "github-copilot-cli": {
-      "type": "registry"
-    },
-    "codex-acp": {
-      "type": "registry"
-    }
-  },
-  "ui_font_size": 16,
-  "buffer_font_size": 15,
-  "theme": {
-    "mode": "system",
-    "light": "Ayu Dark",
-    "dark": "Shades Of Purple (Super Dark)"
+    "github-copilot-cli": { "type": "registry" },
+    "codex-acp": { "type": "registry" }
   }
 }
