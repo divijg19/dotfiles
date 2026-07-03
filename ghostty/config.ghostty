@@ -1,0 +1,13 @@
+theme = TokyoNight Moon
+
+background-opacity = 0.90
+background-blur = true
+background-blur-radius = 18
+
+scrollback-limit = 200000
+
+copy-on-select = true
+
+confirm-close-surface = false
+
+gtk-titlebar = false
