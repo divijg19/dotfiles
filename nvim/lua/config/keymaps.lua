@@ -99,7 +99,9 @@ local function execute(action, opts, callback)
   local function next_phase()
     if phase_idx > #phases then
       if callback then
-        vim.schedule(function() callback(true) end)
+        vim.schedule(function()
+          callback(true)
+        end)
       end
       return
     end
@@ -319,5 +321,3 @@ keymap("n", "<C-`>", function()
   local cwd = vim.fn.expand("%:p:h")
   vim.fn.jobstart({ "ghostty" }, { cwd = cwd, detach = true })
 end, { desc = "Ghostty (cwd)" })
-
-
