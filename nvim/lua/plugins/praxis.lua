@@ -4,6 +4,6 @@ return {
   {
     dir = "~/Desktop/divijg19/Projects/Praxis/nvim",
     name = "praxis",
-    lazy = false,
+    cmd = "Praxis",
   },
 }
