@@ -21,7 +21,7 @@ return {
   opts = {
     open_for_directories = false,
     floating_window_scaling_factor = 0.9,
-    floating_window_border = "rounded",
+    yazi_floating_window_border = "rounded",
     highlight_hovered_buffers_in_same_directory = true,
     change_neovim_cwd_on_close = false,
     integrations = {
