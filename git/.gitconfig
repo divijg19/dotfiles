@@ -10,7 +10,7 @@
 	helper =
 	helper = !/usr/bin/gh auth git-credential
 [core]
-	editor = code --wait
+	editor = nvim
 [filter "lfs"]
 	clean = git-lfs clean -- %f
 	smudge = git-lfs smudge -- %f
