@@ -9,6 +9,7 @@ return {
     },
   },
   opts = {
+    default_file_explorer = true,
     float = {
       border = "rounded",
     },
