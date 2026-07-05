@@ -335,3 +335,7 @@ end, { desc = "Lint" })
 
 -- 📋 Show line diagnostics (makes diagnostics discoverable)
 keymap("n", "<leader>cd", function() vim.diagnostic.open_float() end, { desc = "Line Diagnostics" })
+
+-- 📦 Mason Management
+-- <leader>cm is provided by LazyVim natively. Removed local override.
+
