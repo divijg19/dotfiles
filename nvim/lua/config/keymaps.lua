@@ -258,7 +258,7 @@ keymap("n", "<leader>cc", function()
 end, { desc = "Compile" })
 
 -- 🔁 Recall
-keymap("n", "<leader>cz", function()
+keymap("n", "<leader>cr", function()
   if not last_output.lines then
     vim.notify("No previous output", vim.log.levels.WARN)
     return
@@ -269,7 +269,7 @@ keymap("n", "<leader>cz", function()
 end, { desc = "Recall" })
 
 -- 🧪 Tests
-keymap("n", "<leader>t", function()
+keymap("n", "<leader>ct", function()
   local c = ctx()
   local lang = languages[c.filetype]
   local action = lang and lang.test and lang.test(c)
@@ -321,3 +321,17 @@ keymap("n", "<C-`>", function()
   local cwd = vim.fn.expand("%:p:h")
   vim.fn.jobstart({ "ghostty" }, { cwd = cwd, detach = true })
 end, { desc = "Ghostty (cwd)" })
+
+-- ================================
+-- 🔧 LINT
+-- ================================
+keymap("n", "<leader>cl", function()
+  if vim.bo.filetype == "go" then
+    require("lint").try_lint({ "golangcilint" })
+  else
+    require("lint").try_lint()
+  end
+end, { desc = "Lint" })
+
+-- 📋 Show line diagnostics (makes diagnostics discoverable)
+keymap("n", "<leader>cd", function() vim.diagnostic.open_float() end, { desc = "Line Diagnostics" })
