@@ -1,0 +1,8 @@
+abbr -a upg 'sudo dnf upgrade -y'
+abbr -a upgr 'sudo dnf upgrade --refresh -y'
+abbr -a upgc 'sudo dnf upgrade --refresh --assumeno'
+abbr -a dsync 'sudo dnf distro-sync --refresh -y && sudo dnf autoremove -y'
+abbr -a dnfclean 'sudo dnf clean all && sudo rm -rf /var/cache/dnf /var/cache/libdnf5'
+abbr -a hist 'sudo dnf history list'
+abbr -a histi 'sudo dnf history info'
+abbr -a dnfundo 'sudo dnf history undo'
