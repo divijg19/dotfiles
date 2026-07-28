@@ -39,6 +39,8 @@ alias ls "eza --group-directories-first"
 
 # ----- local functions -----
 
-for file in ~/.config/fish/functions/local/*.fish
-    source $file
+if test -d ~/.config/fish/functions/local
+    for file in ~/.config/fish/functions/local/*.fish
+        test -f $file; and source $file
+    end
 end
