@@ -15,15 +15,8 @@ set -gx LESS -R
 
 # ----- aliases -----
 
-alias gt "git tag"
-alias gs "git status"
 alias gl "git log --oneline --graph --decorate"
-alias gp "git push"
-alias gpu "git pull"
 alias gpf "git push --force-with-lease"
-
-alias got "go test ./..."
-alias gob "go build ./..."
 
 alias upg "sudo dnf upgrade -y"
 alias upgr "sudo dnf upgrade --refresh -y"
