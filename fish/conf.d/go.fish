@@ -1,0 +1,5 @@
+abbr -a gor 'go run .'
+abbr -a gof 'go fmt ./...'
+abbr -a got 'go test ./...'
+abbr -a gom 'go mod tidy'
+abbr -a gob 'go build ./...'
