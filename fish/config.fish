@@ -1,6 +1,8 @@
 if status is-interactive
     starship init fish | source
+    atuin init fish | source
 
+    ## Delay shell integrations until the first fish_prompt
     function __zoxide_init --on-event fish_prompt
         functions -e __zoxide_init
 
