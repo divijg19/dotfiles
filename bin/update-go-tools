@@ -1,0 +1,96 @@
+#!/bin/sh
+#
+# update-go-tools: Automatically update binaries installed via `go install`
+# by inspecting embedded module metadata in GOBIN.
+#
+# This tool acts as a manager and health check for every executable in GOBIN
+# that contains Go module metadata.
+#
+# Usage:
+#   update-go-tools          Update all Go tools found in GOBIN
+#   update-go-tools --list   List inventory of all Go-managed tools
+
+set -eu
+
+# Verify go exists in PATH
+if ! command -v go >/dev/null 2>&1; then
+    echo "Error: 'go' is not installed or not in PATH." >&2
+    exit 1
+fi
+
+# Determine GOBIN directory (respecting custom GOBIN if set)
+GOBIN=$(go env GOBIN)
+if [ -z "$GOBIN" ]; then
+    GOBIN="$(go env GOPATH)/bin"
+fi
+
+if [ ! -d "$GOBIN" ]; then
+    echo "Error: Go bin directory $GOBIN does not exist." >&2
+    exit 1
+fi
+
+# Handle --list flag for tool inventory
+if [ "${1:-}" = "--list" ]; then
+    for bin in $(find "$GOBIN" -maxdepth 1 -type f | sort); do
+        [ -f "$bin" ] && [ -x "$bin" ] || continue
+        pkg_path=$(go version -m "$bin" 2>/dev/null | awk '$1=="path"{print $2}')
+        if [ -n "$pkg_path" ]; then
+            printf "%-20s %s\n" "$(basename "$bin")" "$pkg_path"
+        fi
+    done
+    exit 0
+fi
+
+# Print the detected Go version
+go_ver=$(go env GOVERSION)
+echo "Go: $go_ver"
+echo ""
+
+updated=0
+skipped=0
+failed=0
+failed_list=""
+
+# Iterate through every binary in GOBIN deterministically
+for bin in $(find "$GOBIN" -maxdepth 1 -type f | sort); do
+    [ -f "$bin" ] && [ -x "$bin" ] || continue
+
+    tool_name=$(basename "$bin")
+
+    # Extract the Go module import path embedded in the binary
+    pkg_path=$(go version -m "$bin" 2>/dev/null | awk '$1=="path"{print $2}')
+
+    if [ -z "$pkg_path" ]; then
+        echo "Skipping $tool_name (no module metadata)"
+        skipped=$((skipped + 1))
+        continue
+    fi
+
+    printf "Updating %-20s " "$tool_name..."
+    if go install "${pkg_path}@latest"; then
+        echo "✓"
+        updated=$((updated + 1))
+    else
+        echo "✗"
+        failed=$((failed + 1))
+        if [ -z "$failed_list" ]; then
+            failed_list="- $tool_name ($pkg_path)"
+        else
+            failed_list="$failed_list
+- $tool_name ($pkg_path)"
+        fi
+    fi
+done
+
+echo ""
+echo "Updated: $updated"
+if [ "$skipped" -gt 0 ]; then
+    echo "Skipped: $skipped"
+fi
+if [ "$failed" -gt 0 ]; then
+    echo "Failed:  $failed"
+    echo ""
+    echo "Failed tools:"
+    printf "%s\n" "$failed_list"
+    exit 1
+fi
