@@ -1,96 +1,142 @@
 #!/bin/sh
 #
-# update-go-tools: Automatically update binaries installed via `go install`
-# by inspecting embedded module metadata in GOBIN.
+# update-go-tools: Inspect, inventory, and update Go tools installed via `go install`
 #
-# This tool acts as a manager and health check for every executable in GOBIN
-# that contains Go module metadata.
-#
-# Usage:
-#   update-go-tools          Update all Go tools found in GOBIN
-#   update-go-tools --list   List inventory of all Go-managed tools
+# ARCHITECTURE:
+#   - Single discovery engine emitting structured tool records (parsing metadata once).
+#   - Explicit error handling (`go version -m` without masking).
+#   - Streaming file-backed state persistence (avoids subshell variable loss).
+#   - Direct output streaming with clean status reporting (✓ / ✗).
+#   - Rich inventory inspection mode (`--list`).
 
 set -eu
 
-# Verify go exists in PATH
-if ! command -v go >/dev/null 2>&1; then
-    echo "Error: 'go' is not installed or not in PATH." >&2
+die() {
+    printf "Error: %s\n" "$1" >&2
     exit 1
-fi
+}
 
-# Determine GOBIN directory (respecting custom GOBIN if set)
-GOBIN=$(go env GOBIN)
-if [ -z "$GOBIN" ]; then
-    GOBIN="$(go env GOPATH)/bin"
-fi
+warn() {
+    printf "Warning: %s\n" "$1" >&2
+}
 
-if [ ! -d "$GOBIN" ]; then
-    echo "Error: Go bin directory $GOBIN does not exist." >&2
-    exit 1
-fi
+print_header() {
+    go_version=$(go env GOVERSION)
+    printf "Go: %s\n\n" "$go_version"
+}
 
-# Handle --list flag for tool inventory
-if [ "${1:-}" = "--list" ]; then
-    for bin in $(find "$GOBIN" -maxdepth 1 -type f | sort); do
-        [ -f "$bin" ] && [ -x "$bin" ] || continue
-        pkg_path=$(go version -m "$bin" 2>/dev/null | awk '$1=="path"{print $2}')
-        if [ -n "$pkg_path" ]; then
-            printf "%-20s %s\n" "$(basename "$bin")" "$pkg_path"
+discover_gobin() {
+    gobin_dir=$(go env GOBIN)
+    if [ -z "$gobin_dir" ]; then
+        gobin_path=$(go env GOPATH)
+        if [ -z "$gobin_path" ]; then
+            die "GOPATH is not set and GOBIN is empty."
         fi
+        gobin_dir="$gobin_path/bin"
+    fi
+
+    if [ ! -d "$gobin_dir" ]; then
+        die "Go bin directory '$gobin_dir' does not exist."
+    fi
+
+    printf "%s" "$gobin_dir"
+}
+
+# Single discovery engine: scans GOBIN and parses go version -m once per binary with explicit error checks
+discover_tools() {
+    gobin_dir="$1"
+    for tool_path in "$gobin_dir"/*; do
+        [ -f "$tool_path" ] && [ -x "$tool_path" ] || continue
+
+        if meta=$(go version -m "$tool_path" 2>/dev/null); then
+            package_path=$(printf "%s\n" "$meta" | awk '$1=="path"{print $2}')
+            version=$(printf "%s\n" "$meta" | awk '$1=="mod"{print $3}')
+            [ -z "$version" ] && version="unknown"
+
+            if [ -n "$package_path" ]; then
+                tool_name=$(basename "$tool_path")
+                printf "%s|%s|%s|%s\n" "$tool_name" "$package_path" "$tool_path" "$version"
+            fi
+        fi
+    done | sort
+}
+
+list_tools() {
+    gobin_dir="$1"
+    discover_tools "$gobin_dir" | while IFS='|' read -r tool_name package_path tool_path version; do
+        [ -n "$tool_name" ] || continue
+        printf "%-20s %-15s %s\n" "$tool_name" "$version" "$package_path"
     done
-    exit 0
-fi
+}
 
-# Print the detected Go version
-go_ver=$(go env GOVERSION)
-echo "Go: $go_ver"
-echo ""
-
-updated=0
-skipped=0
-failed=0
-failed_list=""
-
-# Iterate through every binary in GOBIN deterministically
-for bin in $(find "$GOBIN" -maxdepth 1 -type f | sort); do
-    [ -f "$bin" ] && [ -x "$bin" ] || continue
-
-    tool_name=$(basename "$bin")
-
-    # Extract the Go module import path embedded in the binary
-    pkg_path=$(go version -m "$bin" 2>/dev/null | awk '$1=="path"{print $2}')
-
-    if [ -z "$pkg_path" ]; then
-        echo "Skipping $tool_name (no module metadata)"
-        skipped=$((skipped + 1))
-        continue
+main() {
+    if ! command -v go >/dev/null 2>&1; then
+        die "'go' is not installed or not in PATH."
     fi
 
-    printf "Updating %-20s " "$tool_name..."
-    if go install "${pkg_path}@latest"; then
-        echo "✓"
-        updated=$((updated + 1))
-    else
-        echo "✗"
-        failed=$((failed + 1))
-        if [ -z "$failed_list" ]; then
-            failed_list="- $tool_name ($pkg_path)"
+    gobin_dir=$(discover_gobin)
+
+    if [ "${1:-}" = "--list" ]; then
+        list_tools "$gobin_dir"
+        exit 0
+    fi
+
+    print_header
+
+    updated_count=0
+    skipped_count=0
+    failed_count=0
+    failed_list=""
+
+    # Stream discovery to a temp file to prevent subshell state loss
+    disc_file=$(mktemp 2>/dev/null || mktemp -t 'update-go-tools-disc.XXXXXX')
+    discover_tools "$gobin_dir" > "$disc_file"
+
+    total_files=0
+    for f in "$gobin_dir"/*; do
+        [ -f "$f" ] && [ -x "$f" ] && total_files=$((total_files + 1))
+    done
+
+    go_tools_count=0
+
+    while IFS='|' read -r tool_name package_path tool_path version; do
+        [ -n "$tool_name" ] || continue
+        go_tools_count=$((go_tools_count + 1))
+
+        printf "Updating %-20s " "$tool_name..."
+
+        if go install "${package_path}@latest"; then
+            printf "✓\n"
+            updated_count=$((updated_count + 1))
         else
-            failed_list="$failed_list
-- $tool_name ($pkg_path)"
+            printf "✗\n"
+            failed_count=$((failed_count + 1))
+            if [ -z "$failed_list" ]; then
+                failed_list="- $tool_name"
+            else
+                failed_list="$failed_list
+- $tool_name"
+            fi
         fi
-    fi
-done
+    done < "$disc_file"
 
-echo ""
-echo "Updated: $updated"
-if [ "$skipped" -gt 0 ]; then
-    echo "Skipped: $skipped"
-fi
-if [ "$failed" -gt 0 ]; then
-    echo "Failed:  $failed"
-    echo ""
-    echo "Failed tools:"
-    printf "%s\n" "$failed_list"
-    exit 1
-fi
+    rm -f "$disc_file"
+
+    skipped_count=$((total_files - go_tools_count))
+
+    printf "\n"
+    printf "Updated:  %d\n" "$updated_count"
+    if [ "$skipped_count" -gt 0 ]; then
+        printf "Skipped:  %d\n" "$skipped_count"
+    fi
+    if [ "$failed_count" -gt 0 ]; then
+        printf "Failed:   %d\n" "$failed_count"
+    fi
+
+    if [ "$failed_count" -gt 0 ]; then
+        printf "\nFailed tools:\n%s\n" "$failed_list"
+        exit 1
+    fi
+}
+
+main "$@"
