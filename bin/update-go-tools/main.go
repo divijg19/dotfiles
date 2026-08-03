@@ -20,15 +20,51 @@ const (
 )
 
 type Tool struct {
-	Name        string
-	PackagePath string
-	Path        string
-	Version     string
-	BuildInfo   *buildinfo.BuildInfo
+	Name      string
+	Path      string
+	BuildInfo *buildinfo.BuildInfo
+}
+
+func (t Tool) PackagePath() string {
+	return t.BuildInfo.Path
+}
+
+func (t Tool) ModulePath() string {
+	if t.BuildInfo.Main.Path != "" {
+		return t.BuildInfo.Main.Path
+	}
+	return t.BuildInfo.Path
+}
+
+func (t Tool) Version() string {
+	v := t.BuildInfo.Main.Version
+	if v == "" {
+		return "unknown"
+	}
+	return v
+}
+
+func (t Tool) GoVersion() string {
+	v := t.BuildInfo.GoVersion
+	if v == "" {
+		return "unknown"
+	}
+	return v
+}
+
+func (t Tool) IsUpdateable() bool {
+	pkg := t.PackagePath()
+	if pkg == "" || pkg == "(devel)" {
+		return false
+	}
+	ver := t.BuildInfo.Main.Version
+	if ver == "" || ver == "(devel)" {
+		return false
+	}
+	return true
 }
 
 func main() {
-	// Verify go exists in PATH
 	if _, err := exec.LookPath("go"); err != nil {
 		fmt.Fprintln(os.Stderr, "Error: 'go' is not installed or not in PATH.")
 		os.Exit(ExitEnv)
@@ -78,7 +114,6 @@ func main() {
 		}
 	}
 
-	// Default: update tools (with optional positional filtering)
 	if err := updateTools(gobin, args); err != nil {
 		os.Exit(ExitFailure)
 	}
@@ -104,7 +139,19 @@ func getGobin() (string, error) {
 	return filepath.Join(gopath, "bin"), nil
 }
 
-func discoverTools(gobin string) ([]Tool, error) {
+func Inspect(toolPath, name string) (Tool, error) {
+	bi, err := buildinfo.ReadFile(toolPath)
+	if err != nil {
+		return Tool{}, err
+	}
+	return Tool{
+		Name:      name,
+		Path:      toolPath,
+		BuildInfo: bi,
+	}, nil
+}
+
+func Discover(gobin string) ([]Tool, error) {
 	entries, err := os.ReadDir(gobin)
 	if err != nil {
 		return nil, err
@@ -122,31 +169,11 @@ func discoverTools(gobin string) ([]Tool, error) {
 			continue
 		}
 
-		bi, err := buildinfo.ReadFile(toolPath)
+		t, err := Inspect(toolPath, entry.Name())
 		if err != nil {
 			continue
 		}
-
-		pkgPath := bi.Main.Path
-		if pkgPath == "" || pkgPath == "(devel)" {
-			pkgPath = bi.Path
-		}
-		if pkgPath == "" {
-			continue
-		}
-
-		version := bi.Main.Version
-		if version == "" {
-			version = "unknown"
-		}
-
-		tools = append(tools, Tool{
-			Name:        entry.Name(),
-			PackagePath: pkgPath,
-			Path:        toolPath,
-			Version:     version,
-			BuildInfo:   bi,
-		})
+		tools = append(tools, t)
 	}
 
 	sort.Slice(tools, func(i, j int) bool {
@@ -157,37 +184,34 @@ func discoverTools(gobin string) ([]Tool, error) {
 }
 
 func printInventory(gobin string) error {
-	tools, err := discoverTools(gobin)
+	tools, err := Discover(gobin)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("%-20s %-15s %s\n", "NAME", "VERSION", "MODULE")
-	fmt.Printf("%-20s %-15s %s\n", "----", "-------", "------")
+	fmt.Printf("%-20s %-15s %s\n", "NAME", "VERSION", "PACKAGE PATH")
+	fmt.Printf("%-20s %-15s %s\n", "----", "-------", "------------")
 	for _, t := range tools {
-		fmt.Printf("%-20s %-15s %s\n", t.Name, t.Version, t.PackagePath)
+		fmt.Printf("%-20s %-15s %s\n", t.Name, t.Version(), t.PackagePath())
 	}
 	return nil
 }
 
 func printToolInfo(gobin, target string) error {
-	tools, err := discoverTools(gobin)
+	tools, err := Discover(gobin)
 	if err != nil {
 		return err
 	}
 
 	for _, t := range tools {
 		if t.Name == target {
-			goVersion := t.BuildInfo.GoVersion
-			if goVersion == "" {
-				goVersion = "unknown"
-			}
-
 			fmt.Printf("Binary\n\n  %s\n\n", t.Name)
-			fmt.Printf("Module\n\n  %s\n\n", t.PackagePath)
-			fmt.Printf("Version\n\n  %s\n\n", t.Version)
-			fmt.Printf("Go (Built with)\n\n  %s\n\n", goVersion)
-			fmt.Printf("Location\n\n  %s\n", t.Path)
+			fmt.Printf("Main Package Path\n\n  %s\n\n", t.PackagePath())
+			fmt.Printf("Module Path\n\n  %s\n\n", t.ModulePath())
+			fmt.Printf("Version\n\n  %s\n\n", t.Version())
+			fmt.Printf("Go (Built with)\n\n  %s\n\n", t.GoVersion())
+			fmt.Printf("Location\n\n  %s\n\n", t.Path)
+			fmt.Printf("Updateable\n\n  %t\n", t.IsUpdateable())
 			return nil
 		}
 	}
@@ -195,7 +219,7 @@ func printToolInfo(gobin, target string) error {
 }
 
 func verifyTools(gobin string) error {
-	tools, err := discoverTools(gobin)
+	tools, err := Discover(gobin)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error discovering tools:", err)
 		return err
@@ -203,14 +227,16 @@ func verifyTools(gobin string) error {
 
 	count := 0
 	for _, t := range tools {
-		if _, err := os.Stat(t.Path); err == nil {
-			fmt.Printf("✓ %-15s (%s)\n", t.Name, t.Version)
-			count++
-		} else {
-			fmt.Fprintf(os.Stderr, "✗ %-15s (not accessible)\n", t.Name)
+		status := "✓"
+		extra := ""
+		if !t.IsUpdateable() {
+			status = "•"
+			extra = " (local/devel)"
 		}
+		fmt.Printf("%s %-15s (%s)%s -> %s\n", status, t.Name, t.Version(), extra, t.PackagePath())
+		count++
 	}
-	fmt.Printf("\n%d tools verified.\n", count)
+	fmt.Printf("\n%d tools inspected.\n", count)
 	return nil
 }
 
@@ -220,7 +246,7 @@ func updateTools(gobin string, filter []string) error {
 		fmt.Printf("Go: %s\n\n", strings.TrimSpace(string(out)))
 	}
 
-	tools, err := discoverTools(gobin)
+	tools, err := Discover(gobin)
 	if err != nil {
 		return err
 	}
@@ -234,6 +260,7 @@ func updateTools(gobin string, filter []string) error {
 	}
 
 	updated := 0
+	skipped := 0
 	failed := 0
 	var failedList []string
 
@@ -247,9 +274,17 @@ func updateTools(gobin string, filter []string) error {
 			continue
 		}
 
+		if !t.IsUpdateable() {
+			if len(filterMap) > 0 {
+				fmt.Printf("Skipping %-20s (local/devel build)\n", t.Name+"...")
+			}
+			skipped++
+			continue
+		}
+
 		fmt.Printf("Updating %-20s ", t.Name+"...")
 
-		cmd := exec.Command("go", "install", t.PackagePath+"@latest")
+		cmd := exec.Command("go", "install", t.PackagePath()+"@latest")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
@@ -263,12 +298,12 @@ func updateTools(gobin string, filter []string) error {
 		}
 	}
 
-	skipped := totalFiles - len(tools)
+	totalSkipped := (totalFiles - len(tools)) + skipped
 
 	fmt.Println()
 	fmt.Printf("Updated:  %d\n", updated)
-	if skipped > 0 {
-		fmt.Printf("Skipped:  %d\n", skipped)
+	if totalSkipped > 0 {
+		fmt.Printf("Skipped:  %d\n", totalSkipped)
 	}
 	if failed > 0 {
 		fmt.Printf("Failed:   %d\n\n", failed)
