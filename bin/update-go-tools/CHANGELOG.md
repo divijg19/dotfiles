@@ -4,6 +4,26 @@ All notable changes to update-go-tools are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+* v1.4.0 architectural consolidation:
+  * Renderers now consume immutable report structures instead of deriving statistics independently.
+  * `Renderer` interface updated with `Inventory`, `Verify`, `Outdated`, `Update`, and `DryRun` report types.
+  * `App` caches discovery results per invocation, eliminating redundant `Load()` calls.
+  * `Update()` pipeline separates planning from execution internally.
+  * `--dry-run` is a planning-only command, distinct from `--check`.
+  * Progress renderer dynamically expands only when subprocess output exists.
+  * JSON output uses stable lowercase field names with `json` tags on all report structs.
+  * All duplicated counting logic eliminated; `LoadSummary` is the single source of truth.
+
+## [v1.4.0]
+
+### Changed
+
+* CLI version bumped to v1.4.0.
+
+## [v1.3.0]
+
 ### Added
 
 * `--outdated` flag to compare installed versions against upstream releases
