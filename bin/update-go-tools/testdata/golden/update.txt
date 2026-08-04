@@ -11,15 +11,10 @@ Discovered
 Skipping local development binaries:
   • localdev
 
-[01/03] hello                        ✓
-[02/03] localdev           • (skipped)
-[03/03] world                        ✓
+[01/02] hello                        ✓
+[02/02] world                        ✓
 
 Skipped
-
-• localdev
-  Reason  : local development binary
-  Path    : <TMP>/gobin/localdev
 
 • <TMP>/gobin/notgo
   Reason  : missing or unreadable build info
@@ -29,6 +24,6 @@ Skipped
 Summary
 
 Updated       2
-Skipped       2
+Skipped       1
 Failed        0
 Duration      0.1s

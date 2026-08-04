@@ -1,5 +1,5 @@
-✓ hello           v1.0.0          example.com/hello
-• localdev        (devel)         example.com/localdev
-✓ world           v1.2.0          example.com/world
+✓ hello           v1.0.0                            example.com/hello
+• localdev        (devel)                           example.com/localdev
+✓ world           v1.2.0                            example.com/world
 
 4 binaries verified (1 unhealthy).
