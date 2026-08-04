@@ -17,8 +17,6 @@ Skipping local development binaries:
 Skipped
 
 • <TMP>/gobin/notgo
-  Reason  : missing or unreadable build info
-  Path    : <TMP>/gobin/notgo
 
 
 Summary

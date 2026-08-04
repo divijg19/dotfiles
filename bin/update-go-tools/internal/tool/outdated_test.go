@@ -136,3 +136,54 @@ func TestCheckOutdated_NonSemverEqual(t *testing.T) {
 		t.Errorf("expected outdated=false for equal non-semver versions")
 	}
 }
+
+func TestCheckOutdated_EmptyLatest(t *testing.T) {
+	runner := mockRunner{output: `{"Path":"example.com/foo","Version":""}`}
+	tools := []Tool{
+		{name: "foo", path: "/gobin/foo", info: &buildinfo.BuildInfo{
+			Path: "example.com/foo/cmd/foo",
+			Main: debug.Module{Path: "example.com/foo", Version: "v1.0.0"},
+		}},
+	}
+	results := CheckOutdated(context.Background(), tools, runner)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Error == nil {
+		t.Errorf("expected error for empty latest version, got nil")
+	}
+}
+
+func TestCheckOutdated_Retracted(t *testing.T) {
+	runner := mockRunner{output: `{"Path":"example.com/foo","Version":"v1.1.0","Retracted":["v1.1.0"]}`}
+	tools := []Tool{
+		{name: "foo", path: "/gobin/foo", info: &buildinfo.BuildInfo{
+			Path: "example.com/foo/cmd/foo",
+			Main: debug.Module{Path: "example.com/foo", Version: "v1.0.0"},
+		}},
+	}
+	results := CheckOutdated(context.Background(), tools, runner)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Error == nil {
+		t.Errorf("expected error for retracted latest version, got nil")
+	}
+}
+
+func TestCheckOutdated_PseudoVersion(t *testing.T) {
+	runner := mockRunner{output: `{"Path":"example.com/foo","Version":"v1.0.0"}`}
+	tools := []Tool{
+		{name: "foo", path: "/gobin/foo", info: &buildinfo.BuildInfo{
+			Path: "example.com/foo/cmd/foo",
+			Main: debug.Module{Path: "example.com/foo", Version: "v1.0.1-0.20230501123456-abcdef123456"},
+		}},
+	}
+	results := CheckOutdated(context.Background(), tools, runner)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Outdated {
+		t.Errorf("expected pseudo-version (newer base) to be considered up to date/ahead against older latest tag")
+	}
+}

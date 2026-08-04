@@ -11,8 +11,6 @@ Discovered
 Skipping local development binaries:
   • localdev
 
-           ✓
-           ✓
 Would update hello            -> example.com/hello
 Would update world            -> example.com/world
 

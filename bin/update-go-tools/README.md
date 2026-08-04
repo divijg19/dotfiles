@@ -10,7 +10,7 @@ update-go-tools --list
 update-go-tools --info <tool>
 update-go-tools --verify
 update-go-tools --outdated
-update-go-tools --check
+update-go-tools --check / --dry-run
 update-go-tools --json
 update-go-tools --help
 update-go-tools --version
@@ -52,7 +52,11 @@ With one or more tool names, updates only those specified tools.
   </tr>
   <tr>
     <td><code>--check</code></td>
-    <td>Preview updates without executing changes</td>
+    <td>Summarize pending updates without executing them</td>
+  </tr>
+  <tr>
+    <td><code>--dry-run</code></td>
+    <td>Show the detailed execution plan without executing it</td>
   </tr>
   <tr>
     <td><code>--json</code></td>
@@ -181,19 +185,19 @@ Terminal UX may evolve incrementally. No breaking changes within the 1.x series.
 The version string is injected at build time and defaults to `dev`:
 
 ```
-go build -ldflags "-X main.version=v1.2.0" ./cmd/update-go-tools
+go build -ldflags "-X main.version=v1.4.0" ./cmd/update-go-tools
 ```
 
 Build metadata (commit hash and build date) can also be injected:
 
 ```
-go build -ldflags "-X main.version=v1.2.0 -X main.commitHash=abc1234 -X main.buildDate=2026-08-04" ./cmd/update-go-tools
+go build -ldflags "-X main.version=v1.4.0 -X main.commitHash=abc1234 -X main.buildDate=2026-08-04" ./cmd/update-go-tools
 ```
 
 `--version` then prints:
 
 ```
-update-go-tools v1.2.0
+update-go-tools v1.4.0
 Commit    abc1234
 Built     2026-08-04
 ```

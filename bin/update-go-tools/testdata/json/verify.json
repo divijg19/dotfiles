@@ -2,14 +2,20 @@
   "results": [
     {
       "name": "hello",
+      "version": "v1.0.0",
+      "package_path": "example.com/hello",
       "healthy": true
     },
     {
       "name": "localdev",
+      "version": "(devel)",
+      "package_path": "example.com/localdev",
       "healthy": true
     },
     {
       "name": "world",
+      "version": "v1.2.0",
+      "package_path": "example.com/world",
       "healthy": true
     },
     {

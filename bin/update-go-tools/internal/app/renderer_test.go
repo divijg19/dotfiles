@@ -41,14 +41,14 @@ func makeTool(name, pkg, version string) tool.Tool {
 
 func TestTerminalUpdate_ClassesStatusCorrectly(t *testing.T) {
 	r := TerminalRenderer{}
-	results := []tool.ToolUpdateResult{
-		{Tool: makeTool("good", "example.com/good", "v1.0.0"), Status: tool.StatusUpdated, Success: true},
-		{Tool: makeTool("skipped", "example.com/skipped", "(devel)"), Status: tool.StatusSkippedLocal, Success: false},
-		{Tool: makeTool("failed", "example.com/failed", "v1.0.0"), Status: tool.StatusFailed, Success: false, Notes: []string{"err"}},
+	report := UpdateReport{
+		Updated: []string{"good"},
+		Failed:  []string{"failed"},
+		Skipped: []string{"localdev"},
 	}
 
 	out, err := captureOutput(t, func() error {
-		return r.Update(results, tool.LoadResult{}, 0, nil, false)
+		return r.Update(report)
 	})
 	if err == nil {
 		t.Error("expected error because one update failed")
@@ -66,13 +66,14 @@ func TestTerminalUpdate_ClassesStatusCorrectly(t *testing.T) {
 
 func TestJSONRenderer_SkippedNotInFailed(t *testing.T) {
 	r := JSONRenderer{}
-	results := []tool.ToolUpdateResult{
-		{Tool: makeTool("hello", "example.com/hello", "v1.0.0"), Status: tool.StatusUpdated, Success: true},
-		{Tool: makeTool("localdev", "example.com/localdev", "(devel)"), Status: tool.StatusSkippedLocal, Success: false},
+	report := UpdateReport{
+		Updated: []string{"hello"},
+		Skipped: []string{"localdev"},
+		Failed:  make([]string, 0),
 	}
 
 	out, err := captureOutput(t, func() error {
-		return r.Update(results, tool.LoadResult{}, 0, nil, false)
+		return r.Update(report)
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -91,11 +92,12 @@ func TestJSONRenderer_SkippedNotInFailed(t *testing.T) {
 
 func TestJSONRenderer_CheckOnly(t *testing.T) {
 	r := JSONRenderer{}
-	results := []tool.ToolUpdateResult{
-		{Tool: makeTool("hello", "example.com/hello", "v1.0.0"), Status: tool.StatusUpdated, Success: true},
+	report := UpdateReport{
+		Updated:   []string{"hello"},
+		CheckOnly: true,
 	}
 	out, err := captureOutput(t, func() error {
-		return r.Update(results, tool.LoadResult{}, 0, nil, true)
+		return r.Update(report)
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -134,13 +136,64 @@ func TestJSONRenderer_InfoFound(t *testing.T) {
 
 func TestJSONRenderer_VerifyReportsUnhealthyOnInvalid(t *testing.T) {
 	r := JSONRenderer{}
-	loadRes := tool.LoadResult{
-		Invalid: []tool.InvalidBinary{
-			{Path: "/gobin/notgo", Error: tool.ErrMissingBuildInfo},
+	report := VerifyReport{
+		Results: []VerifyResultReport{
+			{Name: "/gobin/notgo", Healthy: false, Error: "missing or unreadable build info"},
 		},
+		Summary: VerifySummary{Unhealthy: 1},
 	}
-	err := r.Verify(loadRes)
+	err := r.Verify(report)
 	if err == nil {
 		t.Error("expected error for unhealthy verify")
+	}
+}
+
+func TestTerminalRenderer_VerifyOutput(t *testing.T) {
+	r := TerminalRenderer{}
+	report := VerifyReport{
+		Results: []VerifyResultReport{
+			{Name: "hello", Version: "v1.0.0", PackagePath: "example.com/hello", Healthy: true},
+			{Name: "localdev", Version: "(devel)", PackagePath: "(devel)", Healthy: true},
+		},
+		Invalid: []InvalidReport{
+			{Path: "/gobin/notgo", Message: "missing or unreadable build info"},
+		},
+		Summary: VerifySummary{Healthy: 2, Local: 1, Invalid: 1, Unhealthy: 1},
+	}
+	out, err := captureOutput(t, func() error {
+		return r.Verify(report)
+	})
+	if err == nil {
+		t.Error("expected error for unhealthy verify")
+	}
+	if !bytes.Contains([]byte(out), []byte("✓ hello")) {
+		t.Errorf("expected hello in output:\n%s", out)
+	}
+	if !bytes.Contains([]byte(out), []byte("Local      1")) {
+		t.Errorf("expected Local count in output:\n%s", out)
+	}
+}
+
+func TestTerminalRenderer_DryRun(t *testing.T) {
+	r := TerminalRenderer{}
+	report := DryRunReport{
+		ToUpdate: []DryRunItem{
+			{Name: "hello", PackagePath: "example.com/hello", InstallTarget: "example.com/hello", Command: "go install example.com/hello@latest"},
+		},
+		Skipped: []DryRunItem{
+			{Name: "localdev"},
+		},
+	}
+	out, err := captureOutput(t, func() error {
+		return r.DryRun(report)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !bytes.Contains([]byte(out), []byte("Update plan")) {
+		t.Errorf("expected Update plan in output:\n%s", out)
+	}
+	if !bytes.Contains([]byte(out), []byte("hello")) {
+		t.Errorf("expected hello in output:\n%s", out)
 	}
 }

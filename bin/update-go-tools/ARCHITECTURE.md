@@ -59,6 +59,8 @@ GOPATH/GOBIN resolution and to honor user overrides.
 * JSON relies on `MarshalIndent` with stable, explicit struct field order.
 * Empty list fields marshal to `[]`, never `null`.
 * Version ordering uses `golang.org/x/mod/semver` for deterministic comparison.
+* Renderers receive immutable report structures and perform presentation only.
+* Discovery happens once per invocation and is cached by `App`.
 
 ## Why interfaces exist
 

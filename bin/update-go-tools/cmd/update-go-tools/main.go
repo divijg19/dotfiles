@@ -11,8 +11,8 @@ import (
 
 // version is injected at build time via:
 //
-//	go build -ldflags "-X main.version=v1.2.0"
-var version = "v1.3.0"
+//	go build -ldflags "-X main.version=v1.4.0"
+var version = "v1.4.0"
 
 // commitHash is injected at build time via -ldflags.
 var commitHash = ""
@@ -32,14 +32,17 @@ func main() {
 	args := os.Args[1:]
 	checkOnly := false
 	jsonOutput := false
+	dryRun := false
 
 	var remainingArgs []string
 	for _, arg := range args {
 		switch arg {
 		case "--json":
 			jsonOutput = true
-		case "--check", "--dry-run":
+		case "--check":
 			checkOnly = true
+		case "--dry-run":
+			dryRun = true
 		default:
 			remainingArgs = append(remainingArgs, arg)
 		}
@@ -111,6 +114,48 @@ func main() {
 		filteredArgs = append(filteredArgs, arg)
 	}
 
+	if checkOnly {
+		loadRes, err := application.LoadTools()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error loading tools:", err)
+			os.Exit(ExitFailure)
+		}
+
+		if !jsonOutput {
+			if goVer, err := getGoVersion(ctx, application.Runner); err == nil && goVer != "" {
+				fmt.Printf("Go: %s\n\n", goVer)
+			}
+			fmt.Printf("Scanning %s\n\nDiscovered\n  Executables : %d\n  Updatable   : %d\n  Local       : %d\n  Invalid     : %d\n\n",
+				application.Gobin,
+				loadRes.Summary.Executables,
+				loadRes.Summary.Updatable,
+				loadRes.Summary.Local,
+				loadRes.Summary.Invalid,
+			)
+			if loadRes.Summary.Local > 0 {
+				fmt.Println("Skipping local development binaries:")
+				for _, t := range loadRes.Tools {
+					if !t.CanUpdate() {
+						fmt.Printf("  • %s\n", t.Name())
+					}
+				}
+				fmt.Println()
+			}
+		}
+
+		if err := application.RunCheck(ctx, filteredArgs); err != nil {
+			os.Exit(ExitFailure)
+		}
+		os.Exit(ExitSuccess)
+	}
+
+	if dryRun {
+		if err := application.RunDryRun(ctx, filteredArgs); err != nil {
+			os.Exit(ExitFailure)
+		}
+		os.Exit(ExitSuccess)
+	}
+
 	loadRes, err := application.LoadTools()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error loading tools:", err)
@@ -139,7 +184,7 @@ func main() {
 		}
 	}
 
-	if err := application.RunUpdate(ctx, filteredArgs, checkOnly, loadRes); err != nil {
+	if err := application.RunUpdate(ctx, filteredArgs); err != nil {
 		os.Exit(ExitFailure)
 	}
 }
@@ -164,7 +209,8 @@ Usage:
     update-go-tools --info <tool>
     update-go-tools --verify
     update-go-tools --outdated
-    update-go-tools --check / --dry-run
+    update-go-tools --check
+    update-go-tools --dry-run
     update-go-tools --json
     update-go-tools --help
     update-go-tools --version
@@ -176,8 +222,8 @@ Options:
     --info       Show detailed metadata for a specific tool
     --verify     Verify integrity of installed Go tools without updating
     --outdated   Check upstream releases for installed tools
-    --check      Show what would be updated without executing changes
-    --dry-run    Alias for --check
+    --check      Summarize pending updates without executing them
+    --dry-run    Show the detailed execution plan without executing it
     --json       Emit machine-readable JSON output for commands
 
 Without arguments, updates all discovered Go tools.
