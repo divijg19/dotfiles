@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 	testDir = tmp
 
 	binaryPath = filepath.Join(tmp, "update-go-tools")
-	build := exec.Command("go", "build", "-ldflags=-X=main.version=v1.2.0-test", "-o", binaryPath, ".")
+	build := exec.Command("go", "build", "-ldflags=-X=main.version=v1.2.0-test -X=main.commitHash=abc1234 -X=main.buildDate=2026-08-04", "-o", binaryPath, ".")
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {
@@ -71,10 +71,12 @@ func runCLI(t *testing.T, fixtureEnv []string, args ...string) cliResult {
 }
 
 var goVersionRe = regexp.MustCompile(`go1\.\d+(\.\d+)?(-[A-Za-z0-9:\.]+)?`)
+var durationRe = regexp.MustCompile(`\d+\.\d+s`)
 
 func normalizeOutput(t *testing.T, gobinDir, s string) string {
 	t.Helper()
 	s = goVersionRe.ReplaceAllString(s, "goVERSION")
+	s = durationRe.ReplaceAllString(s, "0.0s")
 	parent := filepath.Dir(gobinDir)
 	escaped := regexp.QuoteMeta(parent)
 	s = regexp.MustCompile(escaped).ReplaceAllString(s, "<TMP>")

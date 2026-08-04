@@ -17,8 +17,8 @@ func (TerminalRenderer) Inventory(loadRes tool.LoadResult) error {
 	for _, t := range loadRes.Tools {
 		fmt.Printf("%-20s %-15s %s\n", t.Name(), t.Version(), t.PackagePath())
 	}
-	if len(loadRes.Invalid) > 0 {
-		fmt.Printf("\nInvalid / Uninspectable binaries (%d):\n", len(loadRes.Invalid))
+	if loadRes.Summary.Invalid > 0 {
+		fmt.Printf("\nInvalid / Uninspectable binaries (%d):\n", loadRes.Summary.Invalid)
 		for _, inv := range loadRes.Invalid {
 			fmt.Printf("  - %s (%s)\n", inv.Path, inv.Message())
 		}
@@ -47,7 +47,8 @@ func (TerminalRenderer) Verify(loadRes tool.LoadResult) error {
 		}
 	}
 
-	count := 0
+	healthy := 0
+	localCount := 0
 	unhealthy := 0
 	for _, r := range results {
 		if r.Healthy {
@@ -59,7 +60,10 @@ func (TerminalRenderer) Verify(loadRes tool.LoadResult) error {
 			}
 			format := fmt.Sprintf("%%s %%-15s %%-%ds  %%s\n", maxVerLen)
 			fmt.Printf(format, status, r.Tool.Name(), extra, r.Tool.PackagePath())
-			count++
+			healthy++
+			if !r.Tool.CanUpdate() {
+				localCount++
+			}
 		} else {
 			fmt.Fprintf(os.Stderr, "✗ %-15s (%s)\n", r.Tool.Name(), r.Error)
 			unhealthy++
@@ -73,8 +77,12 @@ func (TerminalRenderer) Verify(loadRes tool.LoadResult) error {
 		}
 	}
 
-	totalChecked := count + unhealthy
-	fmt.Printf("\n%d binaries verified (%d unhealthy).\n", totalChecked, unhealthy)
+	invalidCount := len(loadRes.Invalid)
+
+	fmt.Printf("\nHealthy    %d\n", healthy)
+	fmt.Printf("Local      %d\n", localCount)
+	fmt.Printf("Invalid    %d\n", invalidCount)
+	fmt.Printf("Unhealthy  %d\n", unhealthy)
 	if unhealthy > 0 {
 		return fmt.Errorf("%d unhealthy binaries found", unhealthy)
 	}

@@ -12,7 +12,13 @@ import (
 // version is injected at build time via:
 //
 //	go build -ldflags "-X main.version=v1.2.0"
-var version = "v1.2.0"
+var version = "v1.3.0"
+
+// commitHash is injected at build time via -ldflags.
+var commitHash = ""
+
+// buildDate is injected at build time via -ldflags (YYYY-MM-DD).
+var buildDate = ""
 
 const (
 	ExitSuccess = 0
@@ -57,6 +63,13 @@ func main() {
 			os.Exit(ExitSuccess)
 		case "--version", "-v":
 			fmt.Printf("update-go-tools %s\n", version)
+			if commitHash != "" {
+				fmt.Printf("Commit    %s\n", commitHash)
+			}
+			if buildDate != "" {
+				fmt.Printf("Built     %s\n", buildDate)
+			}
+			fmt.Println()
 			os.Exit(ExitSuccess)
 		case "--list":
 			if err := application.RunInventory(); err != nil {
@@ -108,23 +121,14 @@ func main() {
 		if goVer, err := getGoVersion(ctx, application.Runner); err == nil && goVer != "" {
 			fmt.Printf("Go: %s\n\n", goVer)
 		}
-		updatable := 0
-		localBuild := 0
-		for _, t := range loadRes.Tools {
-			if t.CanUpdate() {
-				updatable++
-			} else {
-				localBuild++
-			}
-		}
 		fmt.Printf("Scanning %s\n\nDiscovered\n  Executables : %d\n  Updatable   : %d\n  Local       : %d\n  Invalid     : %d\n\n",
 			application.Gobin,
-			len(loadRes.Tools)+len(loadRes.Invalid),
-			updatable,
-			localBuild,
-			len(loadRes.Invalid),
+			loadRes.Summary.Executables,
+			loadRes.Summary.Updatable,
+			loadRes.Summary.Local,
+			loadRes.Summary.Invalid,
 		)
-		if localBuild > 0 {
+		if loadRes.Summary.Local > 0 {
 			fmt.Println("Skipping local development binaries:")
 			for _, t := range loadRes.Tools {
 				if !t.CanUpdate() {

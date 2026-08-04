@@ -26,9 +26,17 @@ func (inv InvalidBinary) Message() string {
 	}
 }
 
+type LoadSummary struct {
+	Executables int
+	Updatable   int
+	Local       int
+	Invalid     int
+}
+
 type LoadResult struct {
 	Tools   []Tool
 	Invalid []InvalidBinary
+	Summary LoadSummary
 }
 
 func Load(gobin string) (LoadResult, error) {
@@ -39,6 +47,7 @@ func Load(gobin string) (LoadResult, error) {
 
 	var tools []Tool
 	var invalids []InvalidBinary
+	var executables, updatable, local int
 
 	for _, c := range candidates {
 		t, err := inspect(c)
@@ -56,11 +65,23 @@ func Load(gobin string) (LoadResult, error) {
 			})
 			continue
 		}
+		executables++
+		if t.CanUpdate() {
+			updatable++
+		} else {
+			local++
+		}
 		tools = append(tools, t)
 	}
 
 	return LoadResult{
 		Tools:   tools,
 		Invalid: invalids,
+		Summary: LoadSummary{
+			Executables: executables + len(invalids),
+			Updatable:   updatable,
+			Local:       local,
+			Invalid:     len(invalids),
+		},
 	}, nil
 }
