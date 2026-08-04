@@ -11,8 +11,8 @@ import (
 
 // version is injected at build time via:
 //
-//	go build -ldflags "-X main.version=v1.2.0"
-var version = "v1.3.0"
+//	go build -ldflags "-X main.version=v1.3.0"
+var version = "v1.4.0"
 
 // commitHash is injected at build time via -ldflags.
 var commitHash = ""
@@ -32,14 +32,17 @@ func main() {
 	args := os.Args[1:]
 	checkOnly := false
 	jsonOutput := false
+	dryRun := false
 
 	var remainingArgs []string
 	for _, arg := range args {
 		switch arg {
 		case "--json":
 			jsonOutput = true
-		case "--check", "--dry-run":
+		case "--check":
 			checkOnly = true
+		case "--dry-run":
+			dryRun = true
 		default:
 			remainingArgs = append(remainingArgs, arg)
 		}
@@ -111,6 +114,13 @@ func main() {
 		filteredArgs = append(filteredArgs, arg)
 	}
 
+	if dryRun {
+		if err := application.RunDryRun(ctx, filteredArgs); err != nil {
+			os.Exit(ExitFailure)
+		}
+		os.Exit(ExitSuccess)
+	}
+
 	loadRes, err := application.LoadTools()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error loading tools:", err)
@@ -139,7 +149,7 @@ func main() {
 		}
 	}
 
-	if err := application.RunUpdate(ctx, filteredArgs, checkOnly, loadRes); err != nil {
+	if err := application.RunUpdate(ctx, filteredArgs, checkOnly); err != nil {
 		os.Exit(ExitFailure)
 	}
 }
