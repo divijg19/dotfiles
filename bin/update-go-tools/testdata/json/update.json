@@ -4,7 +4,6 @@
     "world"
   ],
   "skipped": [
-    "localdev",
     "<TMP>/gobin/notgo"
   ],
   "failed": [],

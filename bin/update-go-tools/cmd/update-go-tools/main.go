@@ -32,7 +32,7 @@ func main() {
 		switch arg {
 		case "--json":
 			jsonOutput = true
-		case "--check":
+		case "--check", "--dry-run":
 			checkOnly = true
 		default:
 			remainingArgs = append(remainingArgs, arg)
@@ -160,7 +160,7 @@ Usage:
     update-go-tools --info <tool>
     update-go-tools --verify
     update-go-tools --outdated
-    update-go-tools --check
+    update-go-tools --check / --dry-run
     update-go-tools --json
     update-go-tools --help
     update-go-tools --version
@@ -173,6 +173,7 @@ Options:
     --verify     Verify integrity of installed Go tools without updating
     --outdated   Check upstream releases for installed tools
     --check      Show what would be updated without executing changes
+    --dry-run    Alias for --check
     --json       Emit machine-readable JSON output for commands
 
 Without arguments, updates all discovered Go tools.

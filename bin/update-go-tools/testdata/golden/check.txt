@@ -12,7 +12,6 @@ Skipping local development binaries:
   • localdev
 
            ✓
-[02/03] localdev           • (skipped)
            ✓
 Would update hello            -> example.com/hello
 Would update world            -> example.com/world

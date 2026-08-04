@@ -29,6 +29,24 @@ func (TerminalRenderer) Inventory(loadRes tool.LoadResult) error {
 func (TerminalRenderer) Verify(loadRes tool.LoadResult) error {
 	results := tool.Verify(loadRes.Tools)
 
+	maxVerLen := 7
+	for _, r := range results {
+		if r.Healthy {
+			ver := r.Tool.Version()
+			if !r.Tool.CanUpdate() {
+				ver = "(devel)"
+			}
+			if len(ver) > maxVerLen {
+				maxVerLen = len(ver)
+			}
+		}
+	}
+	for _, inv := range loadRes.Invalid {
+		if len(inv.Message()) > maxVerLen {
+			maxVerLen = len(inv.Message())
+		}
+	}
+
 	count := 0
 	unhealthy := 0
 	for _, r := range results {
@@ -39,7 +57,8 @@ func (TerminalRenderer) Verify(loadRes tool.LoadResult) error {
 				status = "•"
 				extra = "(devel)"
 			}
-			fmt.Printf("%s %-15s %-15s %s\n", status, r.Tool.Name(), extra, r.Tool.PackagePath())
+			format := fmt.Sprintf("%%s %%-15s %%-%ds  %%s\n", maxVerLen)
+			fmt.Printf(format, status, r.Tool.Name(), extra, r.Tool.PackagePath())
 			count++
 		} else {
 			fmt.Fprintf(os.Stderr, "✗ %-15s (%s)\n", r.Tool.Name(), r.Error)
@@ -112,8 +131,8 @@ func (TerminalRenderer) OnProgress(p tool.Progress) {
 			}
 		}
 	case "Skipped":
-		// Handled in summary/skip block or concise
-		fmt.Printf("[%02d/%02d] %-18s • (skipped)\n", p.Current, p.Total, p.Tool.Name())
+		// Option A: progress section only represents work actually performed.
+		// Skipped items are reported in the dedicated Skipped section afterwards.
 	}
 }
 

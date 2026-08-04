@@ -16,7 +16,6 @@ func NewApp(renderer Renderer, runner tool.Runner) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Pass GOBIN to TerminalRenderer if supported
 	if termRend, ok := renderer.(*TerminalRenderer); ok {
 		termRend.Gobin = gobin
 	}
@@ -71,6 +70,13 @@ func (a *App) RunUpdate(ctx context.Context, args []string, checkOnly bool, load
 		onProgress = termRend.OnProgress
 	}
 
-	results, duration, diagnostics := tool.Update(ctx, loadRes.Tools, args, checkOnly, a.Runner, onProgress)
+	var updatableTools []tool.Tool
+	for _, t := range loadRes.Tools {
+		if t.CanUpdate() {
+			updatableTools = append(updatableTools, t)
+		}
+	}
+
+	results, duration, diagnostics := tool.Update(ctx, updatableTools, args, checkOnly, a.Runner, onProgress)
 	return a.Renderer.Update(results, loadRes, duration, diagnostics, checkOnly)
 }
