@@ -2,4 +2,7 @@
 • localdev        (devel)                           example.com/localdev
 ✓ world           v1.2.0                            example.com/world
 
-4 binaries verified (1 unhealthy).
+Healthy    3
+Local      1
+Invalid    1
+Unhealthy  1

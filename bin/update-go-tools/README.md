@@ -171,12 +171,31 @@ Empty list fields are emitted as `[]`, never `null`.
 * 2 - Usage error
 * 3 - Environment error
 
-## Building
+## API Stability
+
+The CLI contract for the 1.x series is frozen.
+
+All flags, exit codes, JSON response schemas, and terminal output formats are guaranteed stable.
+Terminal UX may evolve incrementally. No breaking changes within the 1.x series.
 
 The version string is injected at build time and defaults to `dev`:
 
 ```
 go build -ldflags "-X main.version=v1.2.0" ./cmd/update-go-tools
+```
+
+Build metadata (commit hash and build date) can also be injected:
+
+```
+go build -ldflags "-X main.version=v1.2.0 -X main.commitHash=abc1234 -X main.buildDate=2026-08-04" ./cmd/update-go-tools
+```
+
+`--version` then prints:
+
+```
+update-go-tools v1.2.0
+Commit    abc1234
+Built     2026-08-04
 ```
 
 ## Testing

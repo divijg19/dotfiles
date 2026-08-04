@@ -73,7 +73,7 @@ func (JSONRenderer) Outdated(outdatedRes []tool.OutdatedResult) error {
 }
 
 func (JSONRenderer) Update(results []tool.ToolUpdateResult, loadRes tool.LoadResult, duration time.Duration, diagnostics []tool.Diagnostic, checkOnly bool) error {
-	var skipped []string
+	skipped := make([]string, 0)
 	for _, r := range results {
 		if r.Status == tool.StatusSkippedLocal {
 			skipped = append(skipped, r.Tool.Name())
