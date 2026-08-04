@@ -8,7 +8,7 @@ import (
 	"update-go-tools/internal/tool"
 )
 
-const Version = "1.2.0"
+const Version = "v1.0.0"
 
 const (
 	ExitSuccess = 0
@@ -25,8 +25,11 @@ func main() {
 	}
 
 	args := os.Args[1:]
-	if len(args) > 0 {
-		switch args[0] {
+	checkOnly := false
+
+	var filteredArgs []string
+	for _, arg := range args {
+		switch arg {
 		case "--help", "-h":
 			printHelp()
 			os.Exit(ExitSuccess)
@@ -44,21 +47,31 @@ func main() {
 				os.Exit(ExitFailure)
 			}
 			os.Exit(ExitSuccess)
-		case "--info":
-			if len(args) < 2 {
+		case "--check":
+			checkOnly = true
+		default:
+			if strings.HasPrefix(arg, "--info") {
+				filteredArgs = append(filteredArgs, arg)
+			} else if strings.HasPrefix(arg, "-") {
+				fmt.Fprintf(os.Stderr, "Error: Unknown option: %s. Run 'update-go-tools --help' for usage.\n", arg)
+				os.Exit(ExitUsage)
+			} else {
+				filteredArgs = append(filteredArgs, arg)
+			}
+		}
+	}
+
+	for i, arg := range args {
+		if arg == "--info" {
+			if i+1 >= len(args) {
 				fmt.Fprintln(os.Stderr, "Error: Option --info requires a tool name.")
 				os.Exit(ExitUsage)
 			}
-			if err := runInfo(gobin, args[1]); err != nil {
+			if err := runInfo(gobin, args[i+1]); err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err)
 				os.Exit(ExitUsage)
 			}
 			os.Exit(ExitSuccess)
-		default:
-			if strings.HasPrefix(args[0], "-") {
-				fmt.Fprintf(os.Stderr, "Error: Unknown option: %s. Run 'update-go-tools --help' for usage.\n", args[0])
-				os.Exit(ExitUsage)
-			}
 		}
 	}
 
@@ -66,48 +79,69 @@ func main() {
 		fmt.Printf("Go: %s\n\n", goVer)
 	}
 
-	results, err := tool.UpdateTools(gobin, args)
+	fmt.Printf("Discovering Go tools...")
+	loadRes, err := tool.Load(gobin)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error updating tools:", err)
+		fmt.Fprintln(os.Stderr, "\nError loading tools:", err)
 		os.Exit(ExitFailure)
 	}
+	fmt.Printf(" %d found.\n\n", len(loadRes.Tools)+len(loadRes.Invalid))
+
+	resultsChan := tool.Update(loadRes.Tools, filteredArgs, checkOnly)
 
 	updated := 0
+	notesCount := 0
+	skippedLocal := 0
 	failed := 0
 	var failedList []string
 
-	for _, res := range results {
+	for res := range resultsChan {
+		if res.Status == tool.StatusSkippedLocal {
+			skippedLocal++
+			if len(filteredArgs) > 0 {
+				fmt.Printf("Skipping %-20s (local/devel build)\n", res.Tool.Name()+"...")
+			}
+			continue
+		}
+
+		if checkOnly {
+			fmt.Printf("Would update %-16s -> %s\n", res.Tool.Name(), res.Tool.InstallTarget())
+			updated++
+			continue
+		}
+
 		fmt.Printf("Updating %-20s ", res.Tool.Name()+"...")
 		if res.Success {
-			fmt.Println("✓")
+			if len(res.Notes) > 0 {
+				fmt.Println("ⓘ")
+				for _, note := range res.Notes {
+					fmt.Printf("  %s\n", note)
+				}
+				notesCount++
+			} else {
+				fmt.Println("✓")
+			}
 			updated++
 		} else {
 			fmt.Println("✗")
+			for _, note := range res.Notes {
+				fmt.Printf("  %s\n", note)
+			}
 			failed++
 			failedList = append(failedList, "- "+res.Tool.Name())
 		}
 	}
 
-	tools, _ := tool.Load(gobin)
-	totalFiles := 0
-	if entries, err := os.ReadDir(gobin); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				totalFiles++
-			}
-		}
-	}
-	skipped := totalFiles - len(tools)
-	for _, t := range tools {
-		if !t.CanUpdate() {
-			skipped++
-		}
-	}
+	invalidCount := len(loadRes.Invalid)
+	totalSkipped := skippedLocal + invalidCount
 
 	fmt.Println()
 	fmt.Printf("Updated:  %d\n", updated)
-	if skipped > 0 {
-		fmt.Printf("Skipped:  %d\n", skipped)
+	if notesCount > 0 {
+		fmt.Printf("Notes:    %d\n", notesCount)
+	}
+	if totalSkipped > 0 {
+		fmt.Printf("Skipped:  %d (Local: %d, Invalid: %d)\n", totalSkipped, skippedLocal, invalidCount)
 	}
 	if failed > 0 {
 		fmt.Printf("Failed:   %d\n\n", failed)
@@ -128,26 +162,32 @@ func getGoVersion() (string, error) {
 }
 
 func runInventory(gobin string) error {
-	tools, err := tool.Load(gobin)
+	loadRes, err := tool.Load(gobin)
 	if err != nil {
 		return err
 	}
 
 	fmt.Printf("%-20s %-15s %s\n", "NAME", "VERSION", "PACKAGE PATH")
 	fmt.Printf("%-20s %-15s %s\n", "----", "-------", "------------")
-	for _, t := range tools {
+	for _, t := range loadRes.Tools {
 		fmt.Printf("%-20s %-15s %s\n", t.Name(), t.Version(), t.PackagePath())
+	}
+	if len(loadRes.Invalid) > 0 {
+		fmt.Printf("\nInvalid / Uninspectable binaries (%d):\n", len(loadRes.Invalid))
+		for _, inv := range loadRes.Invalid {
+			fmt.Printf("  - %s (%v)\n", inv.Path, inv.Error)
+		}
 	}
 	return nil
 }
 
 func runInfo(gobin, target string) error {
-	tools, err := tool.Load(gobin)
+	loadRes, err := tool.Load(gobin)
 	if err != nil {
 		return err
 	}
 
-	for _, t := range tools {
+	for _, t := range loadRes.Tools {
 		if t.Name() == target {
 			fmt.Printf("Binary\n\n  %s\n\n", t.Name())
 			fmt.Printf("Main Package Path\n\n  %s\n\n", t.PackagePath())
@@ -163,11 +203,12 @@ func runInfo(gobin, target string) error {
 }
 
 func runVerify(gobin string) error {
-	results, err := tool.VerifyAll(gobin)
+	loadRes, err := tool.Load(gobin)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error verifying tools:", err)
 		return err
 	}
+
+	results := tool.Verify(loadRes.Tools)
 
 	count := 0
 	unhealthy := 0
@@ -186,9 +227,18 @@ func runVerify(gobin string) error {
 			unhealthy++
 		}
 	}
-	fmt.Printf("\n%d tools verified (%d unhealthy).\n", count, unhealthy)
+
+	if len(loadRes.Invalid) > 0 {
+		for _, inv := range loadRes.Invalid {
+			fmt.Fprintf(os.Stderr, "✗ %-15s (%v)\n", inv.Path, inv.Error)
+			unhealthy++
+		}
+	}
+
+	totalChecked := count + unhealthy
+	fmt.Printf("\n%d binaries verified (%d unhealthy).\n", totalChecked, unhealthy)
 	if unhealthy > 0 {
-		return fmt.Errorf("%d unhealthy tools found", unhealthy)
+		return fmt.Errorf("%d unhealthy binaries found", unhealthy)
 	}
 	return nil
 }
@@ -201,6 +251,7 @@ Usage:
     update-go-tools --list
     update-go-tools --info <tool>
     update-go-tools --verify
+    update-go-tools --check
     update-go-tools --help
     update-go-tools --version
 
@@ -210,6 +261,7 @@ Options:
     --list       List inventory of all Go-managed tools with versions and modules
     --info       Show detailed metadata for a specific tool
     --verify     Verify integrity of installed Go tools without updating
+    --check      Show what would be updated without executing changes
 
 Without arguments, updates all discovered Go tools.
 With one or more tool names, updates only those specified tools.
