@@ -1,0 +1,20 @@
+Go: goVERSION
+
+Scanning <TMP>/gobin
+
+Discovered
+  Executables : 4
+  Updatable   : 2
+  Local       : 1
+  Invalid     : 1
+
+Skipping local development binaries:
+  • localdev
+
+           ✓
+[02/03] localdev           • (skipped)
+           ✓
+Would update hello            -> example.com/hello
+Would update world            -> example.com/world
+
+Would update: 2

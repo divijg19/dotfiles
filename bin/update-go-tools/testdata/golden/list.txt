@@ -1,0 +1,8 @@
+NAME                 VERSION         PACKAGE PATH
+----                 -------         ------------
+hello                v1.0.0          example.com/hello
+localdev             (devel)         example.com/localdev
+world                v1.2.0          example.com/world
+
+Invalid / Uninspectable binaries (1):
+  - <TMP>/gobin/notgo (missing or unreadable build info)

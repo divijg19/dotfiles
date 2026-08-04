@@ -10,6 +10,13 @@ type Tool struct {
 	info *buildinfo.BuildInfo
 }
 
+// NewTool constructs a Tool from its discovered name, filesystem path, and
+// embedded build metadata. It is the single construction path used by both
+// inspection and callers that assemble Tools from known metadata.
+func NewTool(name, path string, info *buildinfo.BuildInfo) Tool {
+	return Tool{name: name, path: path, info: info}
+}
+
 func (t Tool) Name() string {
 	return t.name
 }
@@ -67,4 +74,18 @@ func (t Tool) CanUpdate() bool {
 
 func (t Tool) IsValid() bool {
 	return t.info != nil && t.PackagePath() != ""
+}
+
+func (t Tool) SkipReason() string {
+	if t.info == nil {
+		return "missing build info"
+	}
+	if t.PackagePath() == "" || t.PackagePath() == "(devel)" {
+		return "local development binary"
+	}
+	ver := t.Version()
+	if ver == "" || ver == "unknown" || ver == "(devel)" {
+		return "local development binary"
+	}
+	return "unsupported"
 }

@@ -1,0 +1,21 @@
+{
+  "results": [
+    {
+      "name": "hello",
+      "healthy": true
+    },
+    {
+      "name": "localdev",
+      "healthy": true
+    },
+    {
+      "name": "world",
+      "healthy": true
+    },
+    {
+      "name": "<TMP>/gobin/notgo",
+      "healthy": false,
+      "error": "missing or unreadable build info"
+    }
+  ]
+}

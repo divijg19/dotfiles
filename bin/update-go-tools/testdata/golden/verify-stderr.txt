@@ -1,0 +1,2 @@
+✗ <TMP>/gobin/notgo (missing or unreadable build info)
+Error: 1 unhealthy binaries found

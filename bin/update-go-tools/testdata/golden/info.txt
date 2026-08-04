@@ -1,0 +1,27 @@
+Binary
+
+  hello
+
+Main Package Path
+
+  example.com/hello
+
+Module Path
+
+  example.com/hello
+
+Version
+
+  v1.0.0
+
+Go (Built with)
+
+  goVERSION
+
+Location
+
+  <TMP>/gobin/hello
+
+Can Update
+
+  true
