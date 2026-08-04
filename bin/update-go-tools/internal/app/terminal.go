@@ -103,9 +103,6 @@ func (TerminalRenderer) Outdated(report OutdatedReport) error {
 			status = "error (" + o.Error + ")"
 		} else if o.Outdated {
 			status = "↑ " + o.Latest
-			outdatedCount++
-		} else {
-			upToDateCount++
 		}
 		fmt.Printf(format, o.Name, o.Current, status)
 	}
@@ -214,13 +211,25 @@ func (TerminalRenderer) DryRun(report DryRunReport) error {
 	return nil
 }
 
-func formatDuration(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%.1fs", d.Seconds())
+func (TerminalRenderer) DryRun(report DryRunReport) error {
+	fmt.Println("Planning updates...")
+	fmt.Println()
+	fmt.Printf("%d tools selected\n", len(report.ToUpdate)+len(report.Skipped))
+	fmt.Println()
+	fmt.Println("Would update")
+	for _, item := range report.ToUpdate {
+		fmt.Printf("  %s\n", item.Name)
+		fmt.Printf("    %s\n", item.InstallTarget)
 	}
-	mins := int(d.Minutes())
-	secs := d.Seconds() - float64(mins*60)
-	return fmt.Sprintf("%dm%.1fs", mins, secs)
+	if len(report.Skipped) > 0 {
+		fmt.Println()
+		fmt.Println("Skipped")
+		fmt.Println()
+		for _, item := range report.Skipped {
+			fmt.Printf("  • %s\n", item.Name)
+		}
+	}
+	return nil
 }
 
 func (TerminalRenderer) Info(loadRes tool.LoadResult, target string) error {

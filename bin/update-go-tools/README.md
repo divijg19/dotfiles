@@ -59,6 +59,10 @@ With one or more tool names, updates only those specified tools.
     <td>Show the detailed execution plan without executing it</td>
   </tr>
   <tr>
+    <td><code>--dry-run</code></td>
+    <td>Alias for --check; plans updates without executing</td>
+  </tr>
+  <tr>
     <td><code>--json</code></td>
     <td>Emit machine-readable JSON output for the selected command</td>
   </tr>
