@@ -1,7 +1,6 @@
 package tool
 
 import (
-	"fmt"
 	"os"
 )
 
@@ -11,24 +10,10 @@ type VerificationResult struct {
 	Error   string
 }
 
-func VerifyAll(gobin string) ([]VerificationResult, error) {
-	candidates, err := discover(gobin)
-	if err != nil {
-		return nil, err
-	}
-
+func Verify(tools []Tool) []VerificationResult {
 	var results []VerificationResult
-	for _, c := range candidates {
-		res := VerificationResult{}
-		t, err := inspect(c)
-		if err != nil {
-			res.Tool = Tool{name: c.name, path: c.path}
-			res.Healthy = false
-			res.Error = fmt.Sprintf("cannot read build info: %v", err)
-			results = append(results, res)
-			continue
-		}
-		res.Tool = t
+	for _, t := range tools {
+		res := VerificationResult{Tool: t}
 
 		info, statErr := os.Stat(t.Path())
 		if statErr != nil || info.Mode()&0111 == 0 {
@@ -56,5 +41,5 @@ func VerifyAll(gobin string) ([]VerificationResult, error) {
 		results = append(results, res)
 	}
 
-	return results, nil
+	return results
 }

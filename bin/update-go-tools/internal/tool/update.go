@@ -1,46 +1,86 @@
 package tool
 
 import (
+	"bytes"
 	"os/exec"
+	"strings"
 )
 
 type ToolUpdateResult struct {
 	Tool    Tool
+	Status  Status
 	Success bool
+	Notes   []string
 	Error   error
 }
 
-func UpdateTools(gobin string, filter []string) ([]ToolUpdateResult, error) {
-	tools, err := Load(gobin)
-	if err != nil {
-		return nil, err
-	}
+func Update(tools []Tool, filter []string, dryRun bool) <-chan ToolUpdateResult {
+	ch := make(chan ToolUpdateResult)
 
-	filterMap := make(map[string]bool)
-	for _, f := range filter {
-		filterMap[f] = true
-	}
+	go func() {
+		defer close(ch)
 
-	var results []ToolUpdateResult
-
-	for _, t := range tools {
-		if len(filterMap) > 0 && !filterMap[t.Name()] {
-			continue
+		filterMap := make(map[string]bool)
+		for _, f := range filter {
+			filterMap[f] = true
 		}
 
-		if !t.CanUpdate() {
-			continue
+		for _, t := range tools {
+			if len(filterMap) > 0 && !filterMap[t.Name()] {
+				continue
+			}
+
+			if !t.CanUpdate() {
+				ch <- ToolUpdateResult{
+					Tool:   t,
+					Status: StatusSkippedLocal,
+				}
+				continue
+			}
+
+			if dryRun {
+				ch <- ToolUpdateResult{
+					Tool:    t,
+					Status:  StatusUpdated,
+					Success: true,
+				}
+				continue
+			}
+
+			cmd := exec.Command("go", "install", t.InstallTarget()+"@latest")
+			var buf bytes.Buffer
+			cmd.Stdout = &buf
+			cmd.Stderr = &buf
+
+			err := cmd.Run()
+			success := err == nil
+			status := StatusUpdated
+			if !success {
+				status = StatusFailed
+			}
+
+			var notes []string
+			output := buf.String()
+			for _, line := range strings.Split(output, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				if strings.HasPrefix(line, "go: downloading") || strings.HasPrefix(line, "go: extracting") {
+					continue
+				}
+				notes = append(notes, line)
+			}
+
+			ch <- ToolUpdateResult{
+				Tool:    t,
+				Status:  status,
+				Success: success,
+				Notes:   notes,
+				Error:   err,
+			}
 		}
+	}()
 
-		cmd := exec.Command("go", "install", t.InstallTarget()+"@latest")
-		err := cmd.Run()
-
-		results = append(results, ToolUpdateResult{
-			Tool:    t,
-			Success: err == nil,
-			Error:   err,
-		})
-	}
-
-	return results, nil
+	return ch
 }
