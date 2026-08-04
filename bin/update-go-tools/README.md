@@ -52,7 +52,11 @@ With one or more tool names, updates only those specified tools.
   </tr>
   <tr>
     <td><code>--check</code></td>
-    <td>Preview updates without executing changes</td>
+    <td>Summarize pending updates without executing them</td>
+  </tr>
+  <tr>
+    <td><code>--dry-run</code></td>
+    <td>Show the detailed execution plan without executing it</td>
   </tr>
   <tr>
     <td><code>--dry-run</code></td>

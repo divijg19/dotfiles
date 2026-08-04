@@ -180,12 +180,44 @@ func (a *App) RunInfo(target string) error {
 	return a.Renderer.Info(loadRes, target)
 }
 
-// LoadTools returns the inventory of installed tools in a single pass.
 func (a *App) LoadTools() (tool.LoadResult, error) {
 	return a.load()
 }
 
-func (a *App) RunUpdate(ctx context.Context, args []string, checkOnly bool) error {
+func (a *App) RunCheck(ctx context.Context, args []string) error {
+	loadRes, err := a.load()
+	if err != nil {
+		return err
+	}
+	plan := planUpdate(loadRes, args)
+	report := a.checkReport(plan)
+	return a.Renderer.Check(report)
+}
+
+func (a *App) checkReport(plan planResult) CheckReport {
+	checkTargets := make([]CheckTarget, 0, len(plan.ToUpdate))
+	for _, t := range plan.ToUpdate {
+		checkTargets = append(checkTargets, CheckTarget{
+			Name:          t.Name(),
+			InstallTarget: t.InstallTarget(),
+		})
+	}
+	return CheckReport{
+		CheckTargets: checkTargets,
+	}
+}
+
+func (a *App) RunDryRun(ctx context.Context, args []string) error {
+	loadRes, err := a.load()
+	if err != nil {
+		return err
+	}
+	plan := planUpdate(loadRes, args)
+	report := a.dryRunReport(plan)
+	return a.Renderer.DryRun(report)
+}
+
+func (a *App) RunUpdate(ctx context.Context, args []string) error {
 	loadRes, err := a.load()
 	if err != nil {
 		return err
@@ -203,16 +235,15 @@ func (a *App) RunUpdate(ctx context.Context, args []string, checkOnly bool) erro
 		}
 	}
 
-	results, duration, diagnostics := tool.Update(ctx, updatableTools, args, checkOnly, a.Runner, onProgress)
-	report := a.updateReport(results, loadRes, duration, diagnostics, checkOnly)
+	results, duration, diagnostics := tool.Update(ctx, updatableTools, args, false, a.Runner, onProgress)
+	report := a.updateReport(results, loadRes, duration, diagnostics)
 	return a.Renderer.Update(report)
 }
 
-func (a *App) updateReport(results []tool.ToolUpdateResult, loadRes tool.LoadResult, duration time.Duration, diagnostics []tool.Diagnostic, checkOnly bool) UpdateReport {
+func (a *App) updateReport(results []tool.ToolUpdateResult, loadRes tool.LoadResult, duration time.Duration, diagnostics []tool.Diagnostic) UpdateReport {
 	updated := make([]string, 0)
 	notes := make([]string, 0)
 	failed := make([]string, 0)
-	checkTargets := make([]CheckTarget, 0)
 
 	for _, res := range results {
 		if res.Status == tool.StatusSkippedLocal {
@@ -226,12 +257,6 @@ func (a *App) updateReport(results []tool.ToolUpdateResult, loadRes tool.LoadRes
 		} else {
 			failed = append(failed, res.Tool.Name())
 		}
-		if checkOnly {
-			checkTargets = append(checkTargets, CheckTarget{
-				Name:          res.Tool.Name(),
-				InstallTarget: res.Tool.InstallTarget(),
-			})
-		}
 	}
 
 	skipped := make([]string, 0, len(loadRes.Invalid))
@@ -240,26 +265,14 @@ func (a *App) updateReport(results []tool.ToolUpdateResult, loadRes tool.LoadRes
 	}
 
 	return UpdateReport{
-		Updated:      updated,
-		Notes:        notes,
-		Skipped:      skipped,
-		Failed:       failed,
-		CheckOnly:    checkOnly,
-		Duration:     duration,
-		Diagnostics:  diagnostics,
-		CheckTargets: checkTargets,
+		Updated:     updated,
+		Notes:       notes,
+		Skipped:     skipped,
+		Failed:      failed,
+		CheckOnly:   false,
+		Duration:    duration,
+		Diagnostics: diagnostics,
 	}
-}
-
-func (a *App) RunDryRun(ctx context.Context, args []string) error {
-	loadRes, err := a.load()
-	if err != nil {
-		return err
-	}
-
-	plan := planUpdate(loadRes, args)
-	report := a.dryRunReport(plan)
-	return a.Renderer.DryRun(report)
 }
 
 func planUpdate(loadRes tool.LoadResult, filter []string) planResult {
@@ -302,6 +315,7 @@ func (a *App) dryRunReport(plan planResult) DryRunReport {
 			Name:          t.Name(),
 			PackagePath:   t.PackagePath(),
 			InstallTarget: t.InstallTarget(),
+			Command:       "go install " + t.InstallTarget() + "@latest",
 		})
 	}
 

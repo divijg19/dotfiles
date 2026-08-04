@@ -80,7 +80,23 @@ func (TerminalRenderer) Verify(report VerifyReport) error {
 }
 
 func (TerminalRenderer) Outdated(report OutdatedReport) error {
-	fmt.Printf("%-15s %-12s %s\n", "NAME", "CURRENT", "STATUS")
+	maxNameLen := 4
+	maxCurrLen := 7
+	for _, o := range report.Results {
+		if len(o.Name) > maxNameLen {
+			maxNameLen = len(o.Name)
+		}
+		if len(o.Current) > maxCurrLen {
+			maxCurrLen = len(o.Current)
+		}
+	}
+
+	format := fmt.Sprintf("%%-%ds   %%-%ds   %%s\n", maxNameLen, maxCurrLen)
+	fmt.Printf(format, "NAME", "CURRENT", "STATUS")
+
+	outdatedCount := 0
+	upToDateCount := 0
+
 	for _, o := range report.Results {
 		status := "✓"
 		if o.Error != "" {
@@ -88,7 +104,7 @@ func (TerminalRenderer) Outdated(report OutdatedReport) error {
 		} else if o.Outdated {
 			status = "↑ " + o.Latest
 		}
-		fmt.Printf("%-15s %-12s %s\n", o.Name, o.Current, status)
+		fmt.Printf(format, o.Name, o.Current, status)
 	}
 	fmt.Println()
 	fmt.Printf("%d tools checked\n\n", len(report.Results))
@@ -127,15 +143,6 @@ func (TerminalRenderer) OnProgress(p tool.Progress) {
 }
 
 func (r TerminalRenderer) Update(report UpdateReport) error {
-	if report.CheckOnly {
-		for _, ct := range report.CheckTargets {
-			fmt.Printf("Would update %-16s -> %s\n", ct.Name, ct.InstallTarget)
-		}
-		fmt.Println()
-		fmt.Printf("Would update: %d\n", len(report.CheckTargets))
-		return nil
-	}
-
 	if len(report.Skipped) > 0 {
 		fmt.Println()
 		fmt.Println("Skipped")
@@ -177,6 +184,33 @@ func (r TerminalRenderer) Update(report UpdateReport) error {
 	return nil
 }
 
+func (TerminalRenderer) Check(report CheckReport) error {
+	for _, ct := range report.CheckTargets {
+		fmt.Printf("Would update %-16s -> %s\n", ct.Name, ct.InstallTarget)
+	}
+	fmt.Println()
+	fmt.Printf("Would update: %d\n", len(report.CheckTargets))
+	return nil
+}
+
+func (TerminalRenderer) DryRun(report DryRunReport) error {
+	fmt.Println("Update plan")
+	fmt.Println()
+	for _, item := range report.ToUpdate {
+		fmt.Printf("  %s\n", item.Name)
+		fmt.Printf("    Package : %s\n", item.PackagePath)
+		fmt.Printf("    Command : %s\n\n", item.Command)
+	}
+	if len(report.Skipped) > 0 {
+		fmt.Println("Skipped")
+		fmt.Println()
+		for _, item := range report.Skipped {
+			fmt.Printf("  • %s\n", item.Name)
+		}
+	}
+	return nil
+}
+
 func (TerminalRenderer) DryRun(report DryRunReport) error {
 	fmt.Println("Planning updates...")
 	fmt.Println()
@@ -212,13 +246,4 @@ func (TerminalRenderer) Info(loadRes tool.LoadResult, target string) error {
 		}
 	}
 	return fmt.Errorf("tool '%s' not found or has no module metadata", target)
-}
-
-func formatDuration(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%.1fs", d.Seconds())
-	}
-	mins := int(d.Minutes())
-	secs := d.Seconds() - float64(mins*60)
-	return fmt.Sprintf("%dm%.1fs", mins, secs)
 }

@@ -49,6 +49,19 @@ func (JSONRenderer) Update(report UpdateReport) error {
 	return emitJSON(report)
 }
 
+func (JSONRenderer) Check(report CheckReport) error {
+	updated := make([]string, 0, len(report.CheckTargets))
+	for _, ct := range report.CheckTargets {
+		updated = append(updated, ct.Name)
+	}
+	return emitJSON(UpdateReport{
+		Updated:   updated,
+		Skipped:   []string{},
+		Failed:    []string{},
+		CheckOnly: true,
+	})
+}
+
 func (JSONRenderer) DryRun(report DryRunReport) error {
 	return emitJSON(report)
 }

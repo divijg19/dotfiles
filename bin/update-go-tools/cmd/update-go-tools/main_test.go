@@ -209,6 +209,17 @@ func TestCheckDefaultUpdate(t *testing.T) {
 	}
 }
 
+func TestDryRunDefaultUpdate(t *testing.T) {
+	f := testutil.NewFixture(t)
+	result := runCLI(t, f.Env(), "--dry-run")
+	if result.code != 0 {
+		t.Errorf("exit code: expected 0, got %d", result.code)
+	}
+	if !strings.Contains(result.stdout, "Update plan") {
+		t.Errorf("expected 'Update plan' in dry-run output, got:\n%s", result.stdout)
+	}
+}
+
 func TestListJSON(t *testing.T) {
 	f := testutil.NewFixture(t)
 	result := runCLI(t, f.Env(), "--list", "--json")

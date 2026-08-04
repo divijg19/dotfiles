@@ -10,6 +10,7 @@ type Renderer interface {
 	Verify(report VerifyReport) error
 	Outdated(report OutdatedReport) error
 	Update(report UpdateReport) error
+	Check(report CheckReport) error
 	DryRun(report DryRunReport) error
 	Info(loadRes tool.LoadResult, target string) error
 }
@@ -76,19 +77,22 @@ type OutdatedSummary struct {
 }
 
 type UpdateReport struct {
-	Updated      []string          `json:"updated"`
-	Notes        []string          `json:"notes,omitempty"`
-	Skipped      []string          `json:"skipped"`
-	Failed       []string          `json:"failed"`
-	CheckOnly    bool              `json:"check_only"`
-	Duration     time.Duration     `json:"-"`
-	Diagnostics  []tool.Diagnostic `json:"-"`
-	CheckTargets []CheckTarget     `json:"-"`
+	Updated     []string          `json:"updated"`
+	Notes       []string          `json:"notes,omitempty"`
+	Skipped     []string          `json:"skipped"`
+	Failed      []string          `json:"failed"`
+	CheckOnly   bool              `json:"check_only"`
+	Duration    time.Duration     `json:"-"`
+	Diagnostics []tool.Diagnostic `json:"-"`
+}
+
+type CheckReport struct {
+	CheckTargets []CheckTarget `json:"check_targets"`
 }
 
 type CheckTarget struct {
-	Name          string
-	InstallTarget string
+	Name          string `json:"name"`
+	InstallTarget string `json:"install_target"`
 }
 
 type DryRunReport struct {
@@ -100,4 +104,5 @@ type DryRunItem struct {
 	Name          string `json:"name"`
 	PackagePath   string `json:"package_path,omitempty"`
 	InstallTarget string `json:"install_target,omitempty"`
+	Command       string `json:"command,omitempty"`
 }

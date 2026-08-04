@@ -178,7 +178,7 @@ func TestTerminalRenderer_DryRun(t *testing.T) {
 	r := TerminalRenderer{}
 	report := DryRunReport{
 		ToUpdate: []DryRunItem{
-			{Name: "hello", PackagePath: "example.com/hello", InstallTarget: "example.com/hello"},
+			{Name: "hello", PackagePath: "example.com/hello", InstallTarget: "example.com/hello", Command: "go install example.com/hello@latest"},
 		},
 		Skipped: []DryRunItem{
 			{Name: "localdev"},
@@ -190,8 +190,8 @@ func TestTerminalRenderer_DryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !bytes.Contains([]byte(out), []byte("Planning updates")) {
-		t.Errorf("expected Planning updates in output:\n%s", out)
+	if !bytes.Contains([]byte(out), []byte("Update plan")) {
+		t.Errorf("expected Update plan in output:\n%s", out)
 	}
 	if !bytes.Contains([]byte(out), []byte("hello")) {
 		t.Errorf("expected hello in output:\n%s", out)
