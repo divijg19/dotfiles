@@ -1,0 +1,8 @@
+NAME            CURRENT      STATUS
+hello           v1.0.0       ✓
+world           v1.2.0       ↑ v1.3.0
+
+2 tools checked
+
+1 outdated
+1 up-to-date

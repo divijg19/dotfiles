@@ -11,9 +11,5 @@ func inspect(c candidate) (Tool, error) {
 		return Tool{}, fmt.Errorf("failed to read buildinfo for %s: %w", c.name, err)
 	}
 
-	return Tool{
-		name: c.name,
-		path: c.path,
-		info: bi,
-	}, nil
+	return NewTool(c.name, c.path, bi), nil
 }

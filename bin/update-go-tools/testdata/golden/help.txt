@@ -1,0 +1,25 @@
+update-go-tools v1.2.0-test - Inspect, inventory, and update Go-managed tools
+
+Usage:
+    update-go-tools [tool...]
+    update-go-tools --list
+    update-go-tools --info <tool>
+    update-go-tools --verify
+    update-go-tools --outdated
+    update-go-tools --check
+    update-go-tools --json
+    update-go-tools --help
+    update-go-tools --version
+
+Options:
+    --help       Display this help message
+    --version    Display version information
+    --list       List inventory of all Go-managed tools with versions and modules
+    --info       Show detailed metadata for a specific tool
+    --verify     Verify integrity of installed Go tools without updating
+    --outdated   Check upstream releases for installed tools
+    --check      Show what would be updated without executing changes
+    --json       Emit machine-readable JSON output for commands
+
+Without arguments, updates all discovered Go tools.
+With one or more tool names, updates only those specified tools.

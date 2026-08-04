@@ -1,12 +1,29 @@
 package tool
 
 import (
+	"errors"
 	"fmt"
 )
 
 type InvalidBinary struct {
 	Path  string
 	Error error
+}
+
+// Message returns a stable, user-visible reason for why the binary could not
+// be inspected. The wrapped error in Error may carry toolchain-specific
+// detail; Message is what renderers should present to users.
+func (inv InvalidBinary) Message() string {
+	switch {
+	case errors.Is(inv.Error, ErrMissingBuildInfo):
+		return ErrMissingBuildInfo.Error()
+	case errors.Is(inv.Error, ErrMissingPackagePath):
+		return ErrMissingPackagePath.Error()
+	case errors.Is(inv.Error, ErrInvalidMetadata):
+		return ErrInvalidMetadata.Error()
+	default:
+		return "unable to inspect binary"
+	}
 }
 
 type LoadResult struct {

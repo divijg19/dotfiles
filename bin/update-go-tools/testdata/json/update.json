@@ -1,0 +1,12 @@
+{
+  "updated": [
+    "hello",
+    "world"
+  ],
+  "skipped": [
+    "localdev",
+    "<TMP>/gobin/notgo"
+  ],
+  "failed": [],
+  "check_only": false
+}

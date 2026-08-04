@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "name": "hello",
+      "current": "v1.0.0",
+      "latest": "v1.0.0",
+      "outdated": false
+    },
+    {
+      "name": "world",
+      "current": "v1.2.0",
+      "latest": "v1.3.0",
+      "outdated": true
+    }
+  ]
+}
