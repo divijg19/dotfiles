@@ -30,11 +30,11 @@ available_projects=("${projects[@]}")
 
 declare -A selected
 
-# Use fzf only if running in an interactive terminal (tty available)
-if [ -t 0 ] && command -v fzf &> /dev/null; then
+# Use fzf only if running in an interactive terminal (tty available AND /dev/tty accessible)
+if [ -t 0 ] && [ -r /dev/tty ] && command -v fzf &> /dev/null; then
   echo "Select projects to install (Use TAB or SPACE to select, ENTER to confirm):"
   echo "------------------------------------------"
-  fzf_output=$(printf '%s\n' "${available_projects[@]}" | fzf --multi --bind 'space:toggle' --height=10 --reverse --prompt="Select binaries > ") || true
+  fzf_output=$(printf '%s\n' "${available_projects[@]}" | fzf --multi --bind 'space:toggle' --height=10 --reverse --prompt="Select binaries > " < /dev/tty > /dev/tty) || true
   if [ -n "$fzf_output" ]; then
     while IFS= read -r item; do
       [ -n "$item" ] && selected[$item]=1
@@ -44,7 +44,7 @@ else
   echo "Interactive Checklist (Toggle with [y/n]):"
   echo "------------------------------------------"
   for proj in "${available_projects[@]}"; do
-    read -r -p "Install $proj? (y/N): " choice
+    read -r -p "Install $proj? (y/N): " choice < /dev/tty || true
     if [[ "$choice" =~ ^[Yy]$ ]]; then
       selected[$proj]=1
     fi
@@ -57,7 +57,7 @@ if [ ${#selected[@]} -eq 0 ]; then
 fi
 
 echo
-read -r -p "Enter installation directory [Default: $DEFAULT_INSTALL_DIR]: " custom_install_dir
+read -r -p "Enter installation directory [Default: $DEFAULT_INSTALL_DIR]: " custom_install_dir < /dev/tty || true
 INSTALL_DIR="${custom_install_dir:-$DEFAULT_INSTALL_DIR}"
 mkdir -p "$INSTALL_DIR"
 
@@ -90,20 +90,17 @@ for proj in "${!selected[@]}"; do
     echo "      2) go install (Remote Go module proxy installation)"
     echo "      3) Custom URL (Provide a direct download link)"
     echo "      4) Skip this project"
-    read -r -p "    Enter choice [1-4] (default 1): " fallback_choice
+    read -r -p "    Enter choice [1-4] (default 1): " fallback_choice < /dev/tty || true
     fallback_choice="${fallback_choice:-1}"
 
     case "$fallback_choice" in
       1)
-        # Prepare source directory (either from local submodule or shallow clone on-the-fly)
         proj_path="$BIN_DIR/$proj"
         temp_dir=""
         
         if [ -d "$proj_path" ] && [ -f "$proj_path/go.mod" ]; then
-          # Local submodule exists and populated
           src_dir="$proj_path"
         else
-          # If run via curl | bash or uninitialized submodule, shallow clone on-the-fly
           temp_dir="$(mktemp -d)"
           echo "    Cloning repository for $proj on-the-fly..."
           git clone --depth 1 "https://github.com/divijg19/$proj.git" "$temp_dir"
@@ -121,10 +118,10 @@ for proj in "${!selected[@]}"; do
             fi
           fi
           
-          read -r -p "    Enter build target [Default: $build_target]: " custom_target
+          read -r -p "    Enter build target [Default: $build_target]: " custom_target < /dev/tty || true
           build_target="${custom_target:-$build_target}"
 
-          read -r -p "    Override install path for $proj? [Default: $INSTALL_DIR]: " custom_proj_dir
+          read -r -p "    Override install path for $proj? [Default: $INSTALL_DIR]: " custom_proj_dir < /dev/tty || true
           proj_install_dir="${custom_proj_dir:-$INSTALL_DIR}"
           mkdir -p "$proj_install_dir"
 
@@ -136,13 +133,12 @@ for proj in "${!selected[@]}"; do
           echo "    ❌ Error: No go.mod found for $proj, cannot build locally."
         fi
 
-        # Cleanup temp dir if created
         [ -n "$temp_dir" ] && rm -rf "$temp_dir"
         ;;
       2)
-        read -r -p "    Enter Go module path (e.g., github.com/divijg19/$proj@latest): " mod_path
+        read -r -p "    Enter Go module path (e.g., github.com/divijg19/$proj@latest): " mod_path < /dev/tty || true
         if [ -n "$mod_path" ]; then
-          read -r -p "    Override install path for $proj? [Default: $INSTALL_DIR]: " custom_proj_dir
+          read -r -p "    Override install path for $proj? [Default: $INSTALL_DIR]: " custom_proj_dir < /dev/tty || true
           proj_install_dir="${custom_proj_dir:-$INSTALL_DIR}"
           mkdir -p "$proj_install_dir"
 
@@ -155,9 +151,9 @@ for proj in "${!selected[@]}"; do
         fi
         ;;
       3)
-        read -r -p "    Enter direct binary download URL: " custom_url
+        read -r -p "    Enter direct binary download URL: " custom_url < /dev/tty || true
         if [ -n "$custom_url" ]; then
-          read -r -p "    Override install path for $proj? [Default: $INSTALL_DIR]: " custom_proj_dir
+          read -r -p "    Override install path for $proj? [Default: $INSTALL_DIR]: " custom_proj_dir < /dev/tty || true
           proj_install_dir="${custom_proj_dir:-$INSTALL_DIR}"
           mkdir -p "$proj_install_dir"
 
