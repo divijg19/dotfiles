@@ -1,8 +1,7 @@
 # Architecture
 
 This document records the rationale behind Helm's structure. It is
-updated alongside code in accordance with the release contract
-(`.opencode/bin/helm/CONTRACT.md`): behavior, architecture, tests,
+updated alongside code: behavior, architecture, tests,
 and documentation evolve together.
 
 ## Package Layout
@@ -73,8 +72,7 @@ planning renderer presents the report.
 and hands immutable report structures to a `Renderer`. It never touches the
 terminal directly.
 
-The `Renderer` interface exists because output is a public API (see contract
-§5/§6). The four concrete implementations are `TerminalRenderer`,
+The `Renderer` interface exists because output is a public API. The four concrete implementations are `TerminalRenderer`,
 `JSONRenderer`, `QuietRenderer`, and `CIRenderer` — each is a distinct,
 well-defined output mode, selected by `RenderMode`. The interface boundary
 isolates presentation and keeps JSON, quiet, and CI output free of incidental
@@ -162,3 +160,243 @@ Every external operation specifies its possible failure and the exit code it
 maps to (`ExitEnv` for environment, `ExitUsage` for misuse, `ExitFailure` for
 update/inventory failures). Renderers propagate marshal errors rather than
 swallowing them.
+
+## Output format
+
+Every operation follows the same canonical rhythm:
+
+```
+Discovery
+
+Body
+
+Summary
+```
+
+Every summary block uses the identical layout — a `Summary` heading followed by aligned label/value rows — so every command ends exactly the same way:
+
+```
+Summary
+
+Updated       2
+Skipped       1
+Failed        0
+Duration      3.2s
+```
+
+### Human output
+
+Human output uses a canonical symbol set:
+
+| Symbol | Meaning |
+|---|---|
+| `✓` | Healthy |
+| `•` | Skipped |
+| `✗` | Failed |
+| `↑` | Outdated |
+| `ⓘ` | Note |
+
+CI mode substitutes plain ASCII (`OK`, `-`, `FAIL`).
+
+### Examples
+
+#### Inventory with health status (`--list`)
+
+```
+$ helm --list
+Go: go1.26.5
+
+Discovery
+
+  Gobin       : /home/dev/go/bin
+  Executables : 3
+  Updatable   : 2
+  Local       : 1
+  Invalid     : 0
+
+NAME            VERSION             STATUS      PACKAGE
+air             v1.67.4             Healthy     github.com/air-verse/air
+templ           v0.3.1020           Healthy     github.com/a-h/templ/cmd/templ
+Helm (devel)             Local       helm/cmd/helm
+
+Summary
+
+Healthy       2
+Local         1
+Invalid       0
+Unhealthy     0
+```
+
+#### Concise plan (`--check`)
+
+```
+helm --check
+Would update
+
+  air
+  templ
+
+Skipped
+
+  • Helm
+
+Summary
+
+Would update  2
+Skipped       1
+```
+
+#### Detailed plan (`--check --verbose`, same as `--dry-run --verbose`)
+
+```
+helm --check --verbose
+Would update
+
+  air
+    Package : github.com/air-verse/air
+    Command : go install github.com/air-verse/air@latest
+
+  templ
+    Package : github.com/a-h/templ/cmd/templ
+    Command : go install github.com/a-h/templ/cmd/templ@latest
+
+Summary
+
+Would update  2
+Skipped       1
+```
+
+#### Outdated check (`--outdated`)
+
+```
+$ helm --outdated
+NAME            CURRENT         STATUS
+golangci-lint   v1.64.8         ↑ v1.65.0
+gopls           v0.23.0         ✓
+
+Summary
+
+Checked       2
+Outdated      1
+Up-to-date    1
+```
+
+#### Quiet update for scripting (`-q`)
+
+```
+helm -q
+Updated       2
+Skipped       0
+Failed        0
+Duration      3.2s
+```
+
+#### Deterministic CI output (`--ci`)
+
+```
+$ helm --list --ci
+gobin: /home/dev/go/bin
+go-version: go1.26.5
+executables: 3
+updatable: 2
+local: 1
+invalid: 0
+
+air                 v1.67.4            OK         github.com/air-verse/air
+templ               v0.3.1020          OK         github.com/a-h/templ/cmd/templ
+
+healthy: 2
+local: 1
+invalid: 0
+unhealthy: 0
+```
+
+#### CI update (`--ci`)
+
+CI update distinguishes per-tool records from the summary counts so scripts can parse both unambiguously:
+
+```
+$ helm --ci
+gobin: /home/dev/go/bin
+go-version: go1.26.5
+executables: 3
+updatable: 2
+local: 1
+invalid: 0
+
+updated: air
+updated: templ
+
+updated-count: 2
+skipped-count: 0
+failed-count: 0
+```
+
+#### Update a single tool
+
+```
+helm golangci-lint
+Go: go1.26.5
+
+Discovery
+
+  Gobin       : /home/dev/go/bin
+  Executables : 3
+  Updatable   : 2
+  Local       : 1
+  Invalid     : 0
+
+[01/02] golangci-lint              ✓
+
+Summary
+
+Updated       1
+Skipped       0
+Failed        0
+Duration      1.4s
+```
+
+## JSON schema
+
+`--json` is a pure output renderer available on every operation. The schema is stable: field names, nesting, and ordering never change between releases, and human formatting never affects the JSON shape. Empty list fields are always emitted as `[]`, never `null`.
+
+### Envelope
+
+Every operation response carries a JSON envelope:
+
+```json
+{
+  "operation": "list",
+  "success": true,
+  "tools": []
+}
+```
+
+* `operation` — the logical operation. Values are frozen: `list`, `check`, `update`, `outdated`. There are no aliases: `--dry-run` emits `"operation": "check"` because it invokes the same planning operation.
+* `success` — `true` unless the operation finished with issues (for example an update with failures, or an inventory with unhealthy/invalid binaries). Scripts can gate on `.success` instead of parsing the payload.
+
+### Schemas by command
+
+| Command | JSON Schema |
+|---|---|
+| `--list --json` | `{"operation": "list", "success": bool, "tools": [ToolReport...]}` |
+| `--info <tool> --json` | `ToolReport` |
+| `--check/--dry-run --json` | `{"operation": "check", "success": bool, "would_update": [PlanItem...], "skipped": [PlanItem...]}` |
+| `--outdated --json` | `{"operation": "outdated", "success": bool, "results": [OutdatedItemReport...]}` |
+| default `--json` | `{"operation": "update", "success": bool, "updated": [], "skipped": [], "failed": [], "notes": []}` |
+
+### Report types
+
+* `ToolReport`: `name`, `version`, `package_path`, `module_path`
+* `PlanItem`: `name`, `package_path`, `install_target`, `command`
+* `OutdatedItemReport`: `name`, `current`, `latest`, `outdated`, `error` (omitted on success)
+
+### Compatibility
+
+Within the 1.x series:
+
+* existing fields will not be renamed or removed;
+* field meanings will not change;
+* new fields may only be added in a backward-compatible manner;
+* arrays are never `null`;
+* `operation` values are stable (`list`, `check`, `update`, `outdated`).

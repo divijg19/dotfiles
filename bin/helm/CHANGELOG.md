@@ -117,7 +117,6 @@ All notable changes to Helm are documented here.
   implementations.
 * `Runner` interface for injectable, context-aware subprocess execution.
 * `testdata/` golden and JSON fixtures, plus a hermetic fixture builder.
-* Release contract at `.opencode/bin/helm/CONTRACT.md`.
 
 ## Changed
 
