@@ -43,10 +43,10 @@ go build -o helm ./cmd/helm
 
 ## Key features
 
-- **Single responsibility** — one job: keep `go install` tools up to date.
-- **Multiple output modes** — terminal, JSON, quiet, and CI (deterministic, ASCII-only).
-- **Stable contract** — flags, exit codes, and JSON schema are guaranteed stable within the 1.x series.
-- **Hermetic testing** — tests never touch your real GOBIN, module cache, or network.
+- **Single responsibility**: one job: keep `go install` tools up to date.
+- **Multiple output modes**: terminal, JSON, quiet, and CI (deterministic, ASCII-only).
+- **Stable contract**: flags, exit codes, and JSON schema are guaranteed stable within the 1.x series.
+- **Hermetic testing**: tests never touch your real GOBIN, module cache, or network.
 
 ## Documentation
 
