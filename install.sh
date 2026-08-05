@@ -51,7 +51,6 @@ link() {
 }
 
 mkdir -p ~/.config
-mkdir -p ~/.config/Code/User
 
 # Core configs
 link "$DOTFILES/fish" ~/.config/fish
@@ -62,8 +61,13 @@ link "$DOTFILES/zed" ~/.config/zed
 # Starship
 link "$DOTFILES/starship/starship.toml" ~/.config/starship.toml
 
-# VS Code
-link "$DOTFILES/vscode/settings.json" ~/.config/Code/User/settings.json
-link "$DOTFILES/vscode/keybindings.json" ~/.config/Code/User/keybindings.json
+# Atuin
+link "$DOTFILES/atuin/config.toml" ~/.config/atuin/config.toml
 
-echo "Dotfiles installed from $DOTFILES"
+# Tmux
+link "$DOTFILES/tmux/tmux.conf" ~/.config/tmux/tmux.conf
+
+# Yazi
+link "$DOTFILES/yazi" ~/.config/yazi
+
+echo "Dotfiles successfully installed from $DOTFILES!"
