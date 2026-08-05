@@ -6,3 +6,15 @@
 	path = bin/Keen
   url = git@github-divijg19:divijg19/Keen.git
   branch = main
+[submodule "bin/Peony"]
+	path = bin/Peony
+	url = git@github-divijg19:divijg19/Peony.git
+	branch = main
+[submodule "bin/Sage"]
+	path = bin/Sage
+	url = git@github-divijg19:divijg19/Sage.git
+	branch = main
+[submodule "bin/Pulse"]
+	path = bin/Pulse
+	url = git@github-divijg19:divijg19/Pulse.git
+	branch = main
