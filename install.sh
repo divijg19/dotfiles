@@ -2,72 +2,184 @@
 
 set -e
 
+# Support standalone execution via curl | bash (temp working directory)
 DOTFILES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BIN_DIR="$DOTFILES/bin"
+DEFAULT_INSTALL_DIR="${HOME}/.local/bin"
 
-backup() {
-  if [ -e "$1" ] && [ ! -L "$1" ]; then
-    local ts
-    ts="$(date +%Y%m%d-%H%M%S)"
-    echo "Backing up $1 → $1.bak-$ts"
-    mv "$1" "$1.bak-$ts"
+echo "=========================================="
+echo "      Interactive Binary Demonstration    "
+echo "=========================================="
+
+# Detect OS and Architecture robustly
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|amd64) ARCH="amd64" ;;
+  aarch64|arm64) ARCH="arm64" ;;
+  i386|i686) ARCH="386" ;;
+  armv7l) ARCH="armv7" ;;
+esac
+
+echo "Detected OS: $OS, Architecture: $ARCH"
+echo
+
+# Authoritative project registry (works even if submodules aren't cloned or running via curl | bash)
+projects=("Helm" "Keen" "Peony" "Pulse" "Sage")
+available_projects=("${projects[@]}")
+
+declare -A selected
+
+# Use fzf only if running in an interactive terminal (tty available)
+if [ -t 0 ] && command -v fzf &> /dev/null; then
+  echo "Select projects to install (Use TAB or SPACE to select, ENTER to confirm):"
+  echo "------------------------------------------"
+  fzf_output=$(printf '%s\n' "${available_projects[@]}" | fzf --multi --bind 'space:toggle' --height=10 --reverse --prompt="Select binaries > ") || true
+  if [ -n "$fzf_output" ]; then
+    while IFS= read -r item; do
+      [ -n "$item" ] && selected[$item]=1
+    done <<< "$fzf_output"
   fi
-}
-
-link() {
-  local src="$1"
-  local dest="$2"
-
-  # Ensure parent directory exists
-  mkdir -p "$(dirname "$dest")"
-
-  # Resolve source to absolute path
-  src="$(cd "$(dirname "$src")" && pwd)/$(basename "$src")"
-
-  # Destination does not exist → create symlink
-  if [ ! -e "$dest" ] && [ ! -L "$dest" ]; then
-    echo "Linking $dest → $src"
-    ln -s "$src" "$dest"
-    return
-  fi
-
-  # Destination is a symlink → check if it's the correct one
-  if [ -L "$dest" ]; then
-    local target
-    target="$(readlink "$dest")"
-    if [ "$target" = "$src" ]; then
-      # Already the correct symlink — nothing to do
-      return
+else
+  echo "Interactive Checklist (Toggle with [y/n]):"
+  echo "------------------------------------------"
+  for proj in "${available_projects[@]}"; do
+    read -r -p "Install $proj? (y/N): " choice
+    if [[ "$choice" =~ ^[Yy]$ ]]; then
+      selected[$proj]=1
     fi
-    # Wrong or broken symlink — replace it
-    echo "Linking $dest → $src"
-    ln -sfn "$src" "$dest"
-    return
+  done
+fi
+
+if [ ${#selected[@]} -eq 0 ]; then
+  echo "No projects selected. Exiting."
+  exit 0
+fi
+
+echo
+read -r -p "Enter installation directory [Default: $DEFAULT_INSTALL_DIR]: " custom_install_dir
+INSTALL_DIR="${custom_install_dir:-$DEFAULT_INSTALL_DIR}"
+mkdir -p "$INSTALL_DIR"
+
+echo
+echo "------------------------------------------"
+echo "Installing selected projects..."
+echo "------------------------------------------"
+
+for proj in "${!selected[@]}"; do
+  installed=0
+
+  echo "--> Processing $proj..."
+
+  # 1. Try downloading pre-compiled release binary from GitHub standalone releases
+  release_url="https://github.com/divijg19/$proj/releases/latest/download/$proj-$OS-$ARCH"
+  if curl --output /dev/null --silent --head --fail "$release_url"; then
+    echo "    Downloading pre-compiled release for $proj..."
+    if curl -fsSL "$release_url" -o "$INSTALL_DIR/$proj"; then
+      chmod +x "$INSTALL_DIR/$proj"
+      echo "    Successfully installed pre-compiled $proj to $INSTALL_DIR/$proj"
+      installed=1
+    fi
   fi
 
-  # Regular file or directory — back it up first
-  backup "$dest"
-  echo "Linking $dest → $src"
-  ln -s "$src" "$dest"
-}
+  # 2. Fallback Menu if pre-compiled download failed
+  if [ $installed -eq 0 ]; then
+    echo "    ⚠️ Could not fetch pre-compiled binary for $proj."
+    echo "    Choose fallback method for $proj:"
+    echo "      1) go build (Clone source on-the-fly and build)"
+    echo "      2) go install (Remote Go module proxy installation)"
+    echo "      3) Custom URL (Provide a direct download link)"
+    echo "      4) Skip this project"
+    read -r -p "    Enter choice [1-4] (default 1): " fallback_choice
+    fallback_choice="${fallback_choice:-1}"
 
-mkdir -p ~/.config
+    case "$fallback_choice" in
+      1)
+        # Prepare source directory (either from local submodule or shallow clone on-the-fly)
+        proj_path="$BIN_DIR/$proj"
+        temp_dir=""
+        
+        if [ -d "$proj_path" ] && [ -f "$proj_path/go.mod" ]; then
+          # Local submodule exists and populated
+          src_dir="$proj_path"
+        else
+          # If run via curl | bash or uninitialized submodule, shallow clone on-the-fly
+          temp_dir="$(mktemp -d)"
+          echo "    Cloning repository for $proj on-the-fly..."
+          git clone --depth 1 "https://github.com/divijg19/$proj.git" "$temp_dir"
+          src_dir="$temp_dir"
+        fi
 
-# Core configs
-link "$DOTFILES/fish" ~/.config/fish
-link "$DOTFILES/nvim" ~/.config/nvim
-link "$DOTFILES/ghostty" ~/.config/ghostty
-link "$DOTFILES/zed" ~/.config/zed
+        if [ -f "$src_dir/go.mod" ]; then
+          pushd "$src_dir" > /dev/null
+          
+          build_target="."
+          if [ -d "cmd" ]; then
+            subcmd=$(find cmd -mindepth 1 -maxdepth 1 -type d | head -n 1)
+            if [ -n "$subcmd" ]; then
+              build_target="./$subcmd"
+            fi
+          fi
+          
+          read -r -p "    Enter build target [Default: $build_target]: " custom_target
+          build_target="${custom_target:-$build_target}"
 
-# Starship
-link "$DOTFILES/starship/starship.toml" ~/.config/starship.toml
+          read -r -p "    Override install path for $proj? [Default: $INSTALL_DIR]: " custom_proj_dir
+          proj_install_dir="${custom_proj_dir:-$INSTALL_DIR}"
+          mkdir -p "$proj_install_dir"
 
-# Atuin
-link "$DOTFILES/atuin/config.toml" ~/.config/atuin/config.toml
+          echo "    Building $proj locally from $build_target..."
+          go build -o "$proj_install_dir/$proj" "$build_target"
+          echo "    Successfully built and installed $proj to $proj_install_dir/$proj"
+          popd > /dev/null
+        else
+          echo "    ❌ Error: No go.mod found for $proj, cannot build locally."
+        fi
 
-# Tmux
-link "$DOTFILES/tmux/tmux.conf" ~/.config/tmux/tmux.conf
+        # Cleanup temp dir if created
+        [ -n "$temp_dir" ] && rm -rf "$temp_dir"
+        ;;
+      2)
+        read -r -p "    Enter Go module path (e.g., github.com/divijg19/$proj@latest): " mod_path
+        if [ -n "$mod_path" ]; then
+          read -r -p "    Override install path for $proj? [Default: $INSTALL_DIR]: " custom_proj_dir
+          proj_install_dir="${custom_proj_dir:-$INSTALL_DIR}"
+          mkdir -p "$proj_install_dir"
 
-# Yazi
-link "$DOTFILES/yazi" ~/.config/yazi
+          export GOBIN="$proj_install_dir"
+          echo "    Running go install for $mod_path..."
+          go install "$mod_path"
+          echo "    Successfully installed $proj via go install to $proj_install_dir/"
+        else
+          echo "    ❌ Error: Module path cannot be empty."
+        fi
+        ;;
+      3)
+        read -r -p "    Enter direct binary download URL: " custom_url
+        if [ -n "$custom_url" ]; then
+          read -r -p "    Override install path for $proj? [Default: $INSTALL_DIR]: " custom_proj_dir
+          proj_install_dir="${custom_proj_dir:-$INSTALL_DIR}"
+          mkdir -p "$proj_install_dir"
 
-echo "Dotfiles successfully installed from $DOTFILES!"
+          echo "    Downloading binary from $custom_url..."
+          if curl -fsSL "$custom_url" -o "$proj_install_dir/$proj"; then
+            chmod +x "$proj_install_dir/$proj"
+            echo "    Successfully downloaded and installed $proj to $proj_install_dir/$proj"
+          else
+            echo "    ❌ Error: Failed to download from $custom_url."
+          fi
+        else
+          echo "    ❌ Error: URL cannot be empty."
+        fi
+        ;;
+      *)
+        echo "    Skipping $proj."
+        ;;
+    esac
+  fi
+  echo
+done
+
+echo "=========================================="
+echo "Installation process complete!"
+echo "Make sure $INSTALL_DIR is in your PATH."
