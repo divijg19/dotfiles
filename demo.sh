@@ -24,21 +24,45 @@ echo "Target install directory: $INSTALL_DIR"
 echo
 
 projects=("Helm" "Keen" "Peony" "Pulse" "Sage")
-
-echo "Select projects to install:"
-echo "------------------------------------------"
-
-declare -A selected
+available_projects=()
 
 for proj in "${projects[@]}"; do
   if [ -d "$BIN_DIR/$proj" ]; then
-    read -p "Install $proj? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-      selected[$proj]=1
-    fi
+    available_projects+=("$proj")
   fi
 done
+
+if [ ${#available_projects[@]} -eq 0 ]; then
+  echo "No projects found in $BIN_DIR."
+  exit 0
+fi
+
+declare -A selected
+
+if command -v fzf &> /dev/null; then
+  echo "Select projects to install (Use TAB or SPACE to select, ENTER to confirm):"
+  echo "------------------------------------------"
+  fzf_output=$(printf '%s\n' "${available_projects[@]}" | fzf --multi --bind 'space:toggle' --height=10 --reverse --prompt="Select binaries > ")
+  if [ -n "$fzf_output" ]; then
+    while IFS= read -r item; do
+      [ -n "$item" ] && selected[$item]=1
+    done <<< "$fzf_output"
+  fi
+else
+  echo "Interactive Checklist (Toggle with [y/n]):"
+  echo "------------------------------------------"
+  for proj in "${available_projects[@]}"; do
+    read -p "Install $proj? (y/N): " choice
+    if [[ "$choice" =~ ^[Yy]$ ]]; then
+      selected[$proj]=1
+    fi
+  done
+fi
+
+if [ ${#selected[@]} -eq 0 ]; then
+  echo "No projects selected. Exiting."
+  exit 0
+fi
 
 echo
 echo "------------------------------------------"
@@ -46,7 +70,6 @@ echo "Installing selected projects..."
 echo "------------------------------------------"
 
 for proj in "${!selected[@]}"; do
-  proj_lower="$(echo "$proj" | tr '[:upper:]' '[:lower:]')"
   proj_path="$BIN_DIR/$proj"
   installed=0
 
@@ -66,29 +89,23 @@ for proj in "${!selected[@]}"; do
   # 2. Fallback to local build (go build) if pre-compiled download failed
   if [ $installed -eq 0 ]; then
     echo "    ⚠️ Could not fetch pre-compiled binary for $proj."
-    read -p "    Would you like to build $proj locally from source using go build? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-      if [ -f "$proj_path/go.mod" ]; then
-        pushd "$proj_path" > /dev/null
-        
-        build_target="."
-        if [ -d "cmd" ]; then
-          subcmd=$(find cmd -mindepth 1 -maxdepth 1 -type d | head -n 1)
-          if [ -n "$subcmd" ]; then
-            build_target="./$subcmd"
-          fi
+    echo "    Building $proj locally from source using go build..."
+    if [ -f "$proj_path/go.mod" ]; then
+      pushd "$proj_path" > /dev/null
+      
+      build_target="."
+      if [ -d "cmd" ]; then
+        subcmd=$(find cmd -mindepth 1 -maxdepth 1 -type d | head -n 1)
+        if [ -n "$subcmd" ]; then
+          build_target="./$subcmd"
         fi
-        
-        echo "    Building $proj locally from $build_target..."
-        go build -o "$INSTALL_DIR/$proj" "$build_target"
-        echo "    Successfully built and installed $proj to $INSTALL_DIR/$proj"
-        popd > /dev/null
-      else
-        echo "    ❌ Error: No go.mod found in $proj_path, cannot build locally."
       fi
+      
+      go build -o "$INSTALL_DIR/$proj" "$build_target"
+      echo "    Successfully built and installed $proj to $INSTALL_DIR/$proj"
+      popd > /dev/null
     else
-      echo "    Skipping $proj."
+      echo "    ❌ Error: No go.mod found in $proj_path, cannot build locally."
     fi
   fi
   echo
