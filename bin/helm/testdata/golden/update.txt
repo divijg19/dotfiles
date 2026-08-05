@@ -1,0 +1,26 @@
+Go: goVERSION
+
+Discovery
+
+  Gobin       : <TMP>/gobin
+  Executables : 4
+  Updatable   : 2
+  Local       : 1
+  Invalid     : 1
+
+Skipping local development binaries:
+  • localdev
+
+[01/02] hello                        ✓
+[02/02] world                        ✓
+
+Skipped
+
+  • <TMP>/gobin/notgo
+
+Summary
+
+Updated       2
+Skipped       1
+Failed        0
+Duration      0.0s
