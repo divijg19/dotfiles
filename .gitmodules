@@ -1,3 +1,8 @@
-[submodule "bin/helm"]
-	path = bin/helm
+[submodule "bin/Helm"]
+	path = bin/Helm
 	url = git@github-divijg19:divijg19/Helm.git
+	branch = main
+[submodule "bin/Keen"]
+	path = bin/Keen
+  url = git@github-divijg19:divijg19/Keen.git
+  branch = main

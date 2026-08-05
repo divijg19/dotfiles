@@ -1,0 +1,4 @@
+# Standalone projects live here as submodules.
+# They are part of the workstation layout, not this repository's source.
+
+bin/** linguist-vendored
