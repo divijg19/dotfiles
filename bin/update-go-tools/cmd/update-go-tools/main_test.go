@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 	testDir = tmp
 
 	binaryPath = filepath.Join(tmp, "update-go-tools")
-	build := exec.Command("go", "build", "-ldflags=-X=main.version=v1.2.0-test -X=main.commitHash=abc1234 -X=main.buildDate=2026-08-04", "-o", binaryPath, ".")
+	build := exec.Command("go", "build", "-ldflags=-X=main.version=v1.5.0-test -X=main.commitHash=abc1234 -X=main.buildDate=2026-08-05", "-o", binaryPath, ".")
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {
@@ -153,19 +153,18 @@ func TestList(t *testing.T) {
 	result := runCLI(t, f.Env(), "--list")
 	got := normalizeOutput(t, f.GobinDir, result.stdout)
 	checkGolden(t, f.GobinDir, "list", got, "", goldenPath("list"), "")
-	if result.code != 0 {
-		t.Errorf("exit code: expected 0, got %d", result.code)
+	if result.code != 1 {
+		t.Errorf("exit code: expected 1 (issues found), got %d", result.code)
 	}
 }
 
-func TestVerify(t *testing.T) {
+func TestListCI(t *testing.T) {
 	f := testutil.NewFixture(t)
-	result := runCLI(t, f.Env(), "--verify")
+	result := runCLI(t, f.Env(), "--list", "--ci")
 	got := normalizeOutput(t, f.GobinDir, result.stdout)
-	gotErr := normalizeOutput(t, f.GobinDir, result.stderr)
-	checkGolden(t, f.GobinDir, "verify", got, gotErr, goldenPath("verify"), goldenPath("verify-stderr"))
+	checkGolden(t, f.GobinDir, "list-ci", got, "", goldenPath("list-ci"), "")
 	if result.code != 1 {
-		t.Errorf("exit code: expected 1 (unhealthy), got %d", result.code)
+		t.Errorf("exit code: expected 1 (issues found), got %d", result.code)
 	}
 }
 
@@ -199,7 +198,7 @@ func TestDefaultUpdate(t *testing.T) {
 	}
 }
 
-func TestCheckDefaultUpdate(t *testing.T) {
+func TestPlanCheck(t *testing.T) {
 	f := testutil.NewFixture(t)
 	result := runCLI(t, f.Env(), "--check")
 	got := normalizeOutput(t, f.GobinDir, result.stdout)
@@ -209,14 +208,93 @@ func TestCheckDefaultUpdate(t *testing.T) {
 	}
 }
 
-func TestDryRunDefaultUpdate(t *testing.T) {
+func TestPlanDryRunAlias(t *testing.T) {
 	f := testutil.NewFixture(t)
-	result := runCLI(t, f.Env(), "--dry-run")
+	check := runCLI(t, f.Env(), "--check")
+	dry := runCLI(t, f.Env(), "--dry-run")
+	if check.stdout != dry.stdout {
+		t.Errorf("--dry-run must be an alias of --check:\n--check:\n%s\n--dry-run:\n%s", check.stdout, dry.stdout)
+	}
+	if check.code != dry.code {
+		t.Errorf("exit code mismatch: --check=%d --dry-run=%d", check.code, dry.code)
+	}
+}
+
+func TestPlanVerbose(t *testing.T) {
+	f := testutil.NewFixture(t)
+	result := runCLI(t, f.Env(), "--check", "--verbose")
+	got := normalizeOutput(t, f.GobinDir, result.stdout)
+	checkGolden(t, f.GobinDir, "check-verbose", got, "", goldenPath("check-verbose"), "")
 	if result.code != 0 {
 		t.Errorf("exit code: expected 0, got %d", result.code)
 	}
-	if !strings.Contains(result.stdout, "Update plan") {
-		t.Errorf("expected 'Update plan' in dry-run output, got:\n%s", result.stdout)
+}
+
+func TestPlanVerboseShortFlag(t *testing.T) {
+	f := testutil.NewFixture(t)
+	long := runCLI(t, f.Env(), "--check", "--verbose")
+	short := runCLI(t, f.Env(), "--check", "-V")
+	gotLong := normalizeOutput(t, f.GobinDir, long.stdout)
+	gotShort := normalizeOutput(t, f.GobinDir, short.stdout)
+	if gotLong != gotShort {
+		t.Errorf("-V must match --verbose:\n--verbose:\n%s\n-V:\n%s", gotLong, gotShort)
+	}
+}
+
+func TestQuietUpdate(t *testing.T) {
+	f := testutil.NewFixture(t)
+	result := runCLI(t, f.Env(), "-q")
+	got := normalizeOutput(t, f.GobinDir, result.stdout)
+	checkGolden(t, f.GobinDir, "quiet", got, "", goldenPath("quiet"), "")
+	if result.code != 0 {
+		t.Errorf("exit code: expected 0, got %d", result.code)
+	}
+}
+
+func TestQuietLongFlag(t *testing.T) {
+	f := testutil.NewFixture(t)
+	short := runCLI(t, f.Env(), "-q")
+	long := runCLI(t, f.Env(), "--quiet")
+	gotShort := normalizeOutput(t, f.GobinDir, short.stdout)
+	gotLong := normalizeOutput(t, f.GobinDir, long.stdout)
+	if gotShort != gotLong {
+		t.Errorf("--quiet must match -q output:\n-q:\n%s\n--quiet:\n%s", gotShort, gotLong)
+	}
+}
+
+func TestQuietListSuppressesHeader(t *testing.T) {
+	f := testutil.NewFixture(t)
+	quiet := runCLI(t, f.Env(), "--list", "-q")
+	normal := runCLI(t, f.Env(), "--list")
+	if strings.Contains(quiet.stdout, "Discovery") || strings.Contains(quiet.stdout, "Go:") {
+		t.Errorf("quiet --list must suppress the discovery header:\n%s", quiet.stdout)
+	}
+	if !strings.Contains(quiet.stdout, "NAME") || !strings.Contains(quiet.stdout, "Summary") {
+		t.Errorf("quiet --list must still emit the table and summary:\n%s", quiet.stdout)
+	}
+	if !strings.Contains(normal.stdout, "Discovery") {
+		t.Errorf("non-quiet --list must include the discovery header (sanity):\n%s", normal.stdout)
+	}
+}
+
+func TestQuietOutdatedSuppressesHeader(t *testing.T) {
+	f := testutil.NewFixture(t)
+	result := runCLI(t, f.Env(), "--outdated", "-q")
+	if strings.Contains(result.stdout, "Discovery") || strings.Contains(result.stdout, "Go:") {
+		t.Errorf("quiet --outdated must suppress the discovery header:\n%s", result.stdout)
+	}
+	if !strings.Contains(result.stdout, "NAME") || !strings.Contains(result.stdout, "Summary") {
+		t.Errorf("quiet --outdated must still emit the table and summary:\n%s", result.stdout)
+	}
+}
+
+func TestUpdateCI(t *testing.T) {
+	f := testutil.NewFixture(t)
+	result := runCLI(t, f.Env(), "--ci")
+	got := normalizeOutput(t, f.GobinDir, result.stdout)
+	checkGolden(t, f.GobinDir, "update-ci", got, "", goldenPath("update-ci"), "")
+	if result.code != 0 {
+		t.Errorf("exit code: expected 0, got %d", result.code)
 	}
 }
 
@@ -225,18 +303,22 @@ func TestListJSON(t *testing.T) {
 	result := runCLI(t, f.Env(), "--list", "--json")
 	got := normalizeOutput(t, f.GobinDir, result.stdout)
 	checkGolden(t, f.GobinDir, "list-json", got, "", jsonGoldenPath("list"), "")
-	if result.code != 0 {
-		t.Errorf("exit code: expected 0, got %d", result.code)
+	if result.code != 1 {
+		t.Errorf("exit code: expected 1 (issues found), got %d", result.code)
 	}
 }
 
-func TestVerifyJSON(t *testing.T) {
+func TestPlanJSON(t *testing.T) {
 	f := testutil.NewFixture(t)
-	result := runCLI(t, f.Env(), "--verify", "--json")
-	got := normalizeOutput(t, f.GobinDir, result.stdout)
-	checkGolden(t, f.GobinDir, "verify-json", got, "", jsonGoldenPath("verify"), "")
-	if result.code != 1 {
-		t.Errorf("exit code: expected 1 (unhealthy), got %d", result.code)
+	check := runCLI(t, f.Env(), "--check", "--json")
+	dry := runCLI(t, f.Env(), "--dry-run", "--json")
+	if check.stdout != dry.stdout {
+		t.Errorf("--dry-run --json must match --check --json:\n--check:\n%s\n--dry-run:\n%s", check.stdout, dry.stdout)
+	}
+	got := normalizeOutput(t, f.GobinDir, check.stdout)
+	checkGolden(t, f.GobinDir, "plan-json", got, "", jsonGoldenPath("plan"), "")
+	if check.code != 0 {
+		t.Errorf("exit code: expected 0, got %d", check.code)
 	}
 }
 

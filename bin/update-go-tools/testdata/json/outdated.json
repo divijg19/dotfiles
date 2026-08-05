@@ -1,4 +1,6 @@
 {
+  "operation": "outdated",
+  "success": true,
   "results": [
     {
       "name": "hello",

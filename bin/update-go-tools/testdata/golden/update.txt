@@ -1,8 +1,8 @@
 Go: goVERSION
 
-Scanning <TMP>/gobin
+Discovery
 
-Discovered
+  Gobin       : <TMP>/gobin
   Executables : 4
   Updatable   : 2
   Local       : 1
@@ -17,7 +17,6 @@ Skipping local development binaries:
 Skipped
 
 • <TMP>/gobin/notgo
-
 
 Summary
 

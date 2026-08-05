@@ -19,9 +19,6 @@ func NewApp(renderer Renderer, runner tool.Runner) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	if termRend, ok := renderer.(*TerminalRenderer); ok {
-		termRend.Gobin = gobin
-	}
 	return &App{
 		Gobin:    gobin,
 		Renderer: renderer,
@@ -52,81 +49,72 @@ func (a *App) RunInventory() error {
 }
 
 func (a *App) inventoryReport(loadRes tool.LoadResult) InventoryReport {
-	tools := make([]ToolReport, 0, len(loadRes.Tools))
-	for _, t := range loadRes.Tools {
-		tools = append(tools, ToolReport{
-			Name:        t.Name(),
-			Version:     t.Version(),
-			PackagePath: t.PackagePath(),
-			ModulePath:  t.ModulePath(),
-		})
+	verifyResults := tool.Verify(loadRes.Tools)
+	verifyMap := make(map[string]tool.VerificationResult)
+	for _, vr := range verifyResults {
+		verifyMap[vr.Tool.Name()] = vr
 	}
-	invalid := make([]InvalidReport, 0, len(loadRes.Invalid))
-	for _, inv := range loadRes.Invalid {
-		invalid = append(invalid, InvalidReport{
-			Path:    inv.Path,
-			Message: inv.Message(),
-		})
-	}
-	return InventoryReport{
-		Tools:   tools,
-		Invalid: invalid,
-		Summary: loadRes.Summary,
-	}
-}
 
-func (a *App) RunVerify() error {
-	loadRes, err := a.load()
-	if err != nil {
-		return err
-	}
-	report := a.verifyReport(loadRes)
-	return a.Renderer.Verify(report)
-}
-
-func (a *App) verifyReport(loadRes tool.LoadResult) VerifyReport {
-	results := tool.Verify(loadRes.Tools)
-
-	verReports := make([]VerifyResultReport, 0, len(results)+len(loadRes.Invalid))
+	var items []ToolInventoryItem
 	healthy := 0
 	localCount := 0
 	unhealthy := 0
 
-	for _, r := range results {
-		if r.Healthy {
-			healthy++
-			if !r.Tool.CanUpdate() {
-				localCount++
-			}
-		} else {
+	for _, t := range loadRes.Tools {
+		vr, ok := verifyMap[t.Name()]
+		status := "Healthy"
+		errStr := ""
+		if ok && !vr.Healthy {
+			status = "Unhealthy"
+			errStr = vr.Error
 			unhealthy++
+		} else if !t.CanUpdate() {
+			status = "Local"
+			localCount++
+			healthy++
+		} else {
+			healthy++
 		}
-		verReports = append(verReports, VerifyResultReport{
-			Name:        r.Tool.Name(),
-			Version:     r.Tool.Version(),
-			PackagePath: r.Tool.PackagePath(),
-			Healthy:     r.Healthy,
-			Error:       r.Error,
-		})
-	}
-	for _, inv := range loadRes.Invalid {
-		unhealthy++
-		verReports = append(verReports, VerifyResultReport{
-			Name:    inv.Path,
-			Healthy: false,
-			Error:   inv.Message(),
+
+		items = append(items, ToolInventoryItem{
+			Name:        t.Name(),
+			Version:     t.Version(),
+			PackagePath: t.PackagePath(),
+			ModulePath:  t.ModulePath(),
+			Status:      status,
+			Error:       errStr,
 		})
 	}
 
-	return VerifyReport{
-		Results: verReports,
-		Summary: VerifySummary{
+	for range loadRes.Invalid {
+		unhealthy++
+	}
+
+	return InventoryReport{
+		OperationEnvelope: OperationEnvelope{
+			Operation: OperationList,
+			Success:   unhealthy == 0 && len(loadRes.Invalid) == 0,
+		},
+		Tools:   items,
+		Invalid: a.invalidReports(loadRes.Invalid),
+		Summary: InventorySummary{
 			Healthy:   healthy,
 			Local:     localCount,
 			Invalid:   len(loadRes.Invalid),
 			Unhealthy: unhealthy,
 		},
 	}
+}
+
+func (a *App) invalidReports(invalids []tool.InvalidBinary) []InvalidReport {
+	var reps []InvalidReport
+	for _, inv := range invalids {
+		reps = append(reps, InvalidReport{
+			Path:    inv.Path,
+			Message: inv.Message(),
+		})
+	}
+	return reps
 }
 
 func (a *App) RunOutdated(ctx context.Context) error {
@@ -164,6 +152,10 @@ func (a *App) outdatedReport(outdatedRes []tool.OutdatedResult) OutdatedReport {
 	}
 
 	return OutdatedReport{
+		OperationEnvelope: OperationEnvelope{
+			Operation: OperationOutdated,
+			Success:   true,
+		},
 		Results: outReports,
 		Summary: OutdatedSummary{
 			Outdated: outdatedCount,
@@ -184,37 +176,43 @@ func (a *App) LoadTools() (tool.LoadResult, error) {
 	return a.load()
 }
 
-func (a *App) RunCheck(ctx context.Context, args []string) error {
+func (a *App) RunPlan(ctx context.Context, args []string) error {
 	loadRes, err := a.load()
 	if err != nil {
 		return err
 	}
 	plan := planUpdate(loadRes, args)
-	report := a.checkReport(plan)
-	return a.Renderer.Check(report)
+	report := a.planReport(plan)
+	return a.Renderer.Plan(report)
 }
 
-func (a *App) checkReport(plan planResult) CheckReport {
-	checkTargets := make([]CheckTarget, 0, len(plan.ToUpdate))
+func (a *App) planReport(plan planResult) PlanReport {
+	toUpdate := make([]PlanItem, 0, len(plan.ToUpdate))
 	for _, t := range plan.ToUpdate {
-		checkTargets = append(checkTargets, CheckTarget{
+		toUpdate = append(toUpdate, PlanItem{
 			Name:          t.Name(),
+			PackagePath:   t.PackagePath(),
 			InstallTarget: t.InstallTarget(),
+			Command:       "go install " + t.InstallTarget() + "@latest",
 		})
 	}
-	return CheckReport{
-		CheckTargets: checkTargets,
-	}
-}
 
-func (a *App) RunDryRun(ctx context.Context, args []string) error {
-	loadRes, err := a.load()
-	if err != nil {
-		return err
+	skipped := make([]PlanItem, 0, len(plan.Skipped)+len(plan.Invalid))
+	for _, t := range plan.Skipped {
+		skipped = append(skipped, PlanItem{Name: t.Name()})
 	}
-	plan := planUpdate(loadRes, args)
-	report := a.dryRunReport(plan)
-	return a.Renderer.DryRun(report)
+	for _, inv := range plan.Invalid {
+		skipped = append(skipped, PlanItem{Name: inv.Path})
+	}
+
+	return PlanReport{
+		OperationEnvelope: OperationEnvelope{
+			Operation: OperationCheck,
+			Success:   true,
+		},
+		WouldUpdate: toUpdate,
+		Skipped:     skipped,
+	}
 }
 
 func (a *App) RunUpdate(ctx context.Context, args []string) error {
@@ -265,11 +263,14 @@ func (a *App) updateReport(results []tool.ToolUpdateResult, loadRes tool.LoadRes
 	}
 
 	return UpdateReport{
+		OperationEnvelope: OperationEnvelope{
+			Operation: OperationUpdate,
+			Success:   len(failed) == 0,
+		},
 		Updated:     updated,
 		Notes:       notes,
 		Skipped:     skipped,
 		Failed:      failed,
-		CheckOnly:   false,
 		Duration:    duration,
 		Diagnostics: diagnostics,
 	}
@@ -306,33 +307,4 @@ type planResult struct {
 	ToUpdate []tool.Tool
 	Skipped  []tool.Tool
 	Invalid  []tool.InvalidBinary
-}
-
-func (a *App) dryRunReport(plan planResult) DryRunReport {
-	toUpdate := make([]DryRunItem, 0, len(plan.ToUpdate))
-	for _, t := range plan.ToUpdate {
-		toUpdate = append(toUpdate, DryRunItem{
-			Name:          t.Name(),
-			PackagePath:   t.PackagePath(),
-			InstallTarget: t.InstallTarget(),
-			Command:       "go install " + t.InstallTarget() + "@latest",
-		})
-	}
-
-	skipped := make([]DryRunItem, 0, len(plan.Skipped)+len(plan.Invalid))
-	for _, t := range plan.Skipped {
-		skipped = append(skipped, DryRunItem{
-			Name: t.Name(),
-		})
-	}
-	for _, inv := range plan.Invalid {
-		skipped = append(skipped, DryRunItem{
-			Name: inv.Path,
-		})
-	}
-
-	return DryRunReport{
-		ToUpdate: toUpdate,
-		Skipped:  skipped,
-	}
 }

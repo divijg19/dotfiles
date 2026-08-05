@@ -1,4 +1,6 @@
 {
+  "operation": "list",
+  "success": false,
   "tools": [
     {
       "name": "hello",

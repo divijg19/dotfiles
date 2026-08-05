@@ -1,8 +1,22 @@
+Go: goVERSION
+
+Discovery
+
+  Gobin       : <TMP>/gobin
+  Executables : 4
+  Updatable   : 2
+  Local       : 1
+  Invalid     : 1
+
+Skipping local development binaries:
+  • localdev
+
 NAME    CURRENT   STATUS
 hello   v1.0.0    ✓
 world   v1.2.0    ↑ v1.3.0
 
-2 tools checked
+Summary
 
-1 outdated
-1 up-to-date
+Checked       2
+Outdated      1
+Up-to-date    1

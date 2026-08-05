@@ -6,7 +6,12 @@ import (
 	"update-go-tools/internal/tool"
 )
 
+// JSONRenderer emits machine-readable JSON. It is an output renderer, not an
+// operation. Arrays are always initialized (never null), ordering is
+// deterministic, and human formatting never affects the JSON shape.
 type JSONRenderer struct{}
+
+func (JSONRenderer) Header(HeaderInfo) error { return nil }
 
 func (JSONRenderer) Inventory(report InventoryReport) error {
 	toolsRep := make([]ToolReport, 0, len(report.Tools))
@@ -18,17 +23,20 @@ func (JSONRenderer) Inventory(report InventoryReport) error {
 			ModulePath:  t.ModulePath,
 		})
 	}
-	return emitJSON(ListReport{Tools: toolsRep})
-}
-
-func (JSONRenderer) Verify(report VerifyReport) error {
-	if err := emitJSON(report); err != nil {
+	if err := emitJSON(ListReport{
+		OperationEnvelope: report.OperationEnvelope,
+		Tools:             toolsRep,
+	}); err != nil {
 		return err
 	}
-	if report.Summary.Unhealthy > 0 {
-		return fmt.Errorf("%d unhealthy binaries found", report.Summary.Unhealthy)
+	if report.Summary.Unhealthy > 0 || report.Summary.Invalid > 0 {
+		return fmt.Errorf("%d issues found during inventory check", report.Summary.Unhealthy+report.Summary.Invalid)
 	}
 	return nil
+}
+
+func (JSONRenderer) Plan(report PlanReport) error {
+	return emitJSON(report)
 }
 
 func (JSONRenderer) Outdated(report OutdatedReport) error {
@@ -42,27 +50,13 @@ func (JSONRenderer) Outdated(report OutdatedReport) error {
 			Error:    o.Error,
 		})
 	}
-	return emitJSON(OutdatedReport{Results: outReports})
-}
-
-func (JSONRenderer) Update(report UpdateReport) error {
-	return emitJSON(report)
-}
-
-func (JSONRenderer) Check(report CheckReport) error {
-	updated := make([]string, 0, len(report.CheckTargets))
-	for _, ct := range report.CheckTargets {
-		updated = append(updated, ct.Name)
-	}
-	return emitJSON(UpdateReport{
-		Updated:   updated,
-		Skipped:   []string{},
-		Failed:    []string{},
-		CheckOnly: true,
+	return emitJSON(OutdatedReport{
+		OperationEnvelope: report.OperationEnvelope,
+		Results:           outReports,
 	})
 }
 
-func (JSONRenderer) DryRun(report DryRunReport) error {
+func (JSONRenderer) Update(report UpdateReport) error {
 	return emitJSON(report)
 }
 

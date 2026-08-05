@@ -1,27 +1,34 @@
-update-go-tools v1.2.0-test - Inspect, inventory, and update Go-managed tools
+update-go-tools v1.5.0-test - Inspect, inventory, and update Go-managed tools
 
 Usage:
     update-go-tools [tool...]
-    update-go-tools --list
+    update-go-tools --list [--json|--ci|--quiet]
+    update-go-tools --check [--verbose|-V]
+    update-go-tools --dry-run [--verbose|-V]
+    update-go-tools --outdated [--json|--ci]
     update-go-tools --info <tool>
-    update-go-tools --verify
-    update-go-tools --outdated
-    update-go-tools --check
-    update-go-tools --dry-run
     update-go-tools --json
+    update-go-tools --quiet | -q
+    update-go-tools --ci
     update-go-tools --help
     update-go-tools --version
 
-Options:
+Operations:
+    --list       List all Go-managed tools with versions, health status, and packages
+    --check      Summarize pending updates without executing them
+    --dry-run    Alias for --check; shows the execution plan without running it
+    --outdated   Check upstream releases for installed tools
+    --info       Show detailed metadata for a specific tool
+
+Output modifiers:
+    --json       Emit machine-readable JSON for any operation
+    --quiet, -q  Suppress informational output; emit only the update summary
+    --ci         Deterministic, ASCII-only, line-oriented terminal output
+    --verbose, -V  Detailed planning view (packages and install commands)
+
+Utility:
     --help       Display this help message
     --version    Display version information
-    --list       List inventory of all Go-managed tools with versions and modules
-    --info       Show detailed metadata for a specific tool
-    --verify     Verify integrity of installed Go tools without updating
-    --outdated   Check upstream releases for installed tools
-    --check      Summarize pending updates without executing them
-    --dry-run    Show the detailed execution plan without executing it
-    --json       Emit machine-readable JSON output for commands
 
 Without arguments, updates all discovered Go tools.
 With one or more tool names, updates only those specified tools.

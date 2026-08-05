@@ -1,4 +1,6 @@
 {
+  "operation": "update",
+  "success": true,
   "updated": [
     "hello",
     "world"
@@ -6,6 +8,5 @@
   "skipped": [
     "<TMP>/gobin/notgo"
   ],
-  "failed": [],
-  "check_only": false
+  "failed": []
 }

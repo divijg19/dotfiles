@@ -3,83 +3,139 @@ package app
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 	"update-go-tools/internal/tool"
 )
 
+const (
+	symCheck    = "✓"
+	symBullet   = "•"
+	symFail     = "✗"
+	symOutdated = "↑"
+	symNote     = "ⓘ"
+)
+
 type TerminalRenderer struct {
-	Gobin string
+	verbose bool
 }
 
-func (TerminalRenderer) Inventory(report InventoryReport) error {
-	fmt.Printf("%-20s %-15s %s\n", "NAME", "VERSION", "PACKAGE PATH")
-	fmt.Printf("%-20s %-15s %s\n", "----", "-------", "------------")
-	for _, t := range report.Tools {
-		fmt.Printf("%-20s %-15s %s\n", t.Name, t.Version, t.PackagePath)
+func (r TerminalRenderer) Header(hdr HeaderInfo) error {
+	if hdr.GoVersion != "" {
+		fmt.Printf("Go: %s\n\n", hdr.GoVersion)
 	}
-	if report.Summary.Invalid > 0 {
-		fmt.Printf("\nInvalid / Uninspectable binaries (%d):\n", report.Summary.Invalid)
-		for _, inv := range report.Invalid {
-			fmt.Printf("  - %s (%s)\n", inv.Path, inv.Message)
+	fmt.Println("Discovery")
+	fmt.Println()
+	fmt.Printf("  %-11s : %s\n", "Gobin", hdr.Gobin)
+	fmt.Printf("  %-11s : %d\n", "Executables", hdr.LoadRes.Summary.Executables)
+	fmt.Printf("  %-11s : %d\n", "Updatable", hdr.LoadRes.Summary.Updatable)
+	fmt.Printf("  %-11s : %d\n", "Local", hdr.LoadRes.Summary.Local)
+	fmt.Printf("  %-11s : %d\n", "Invalid", hdr.LoadRes.Summary.Invalid)
+	fmt.Println()
+	if hdr.LoadRes.Summary.Local > 0 {
+		fmt.Println("Skipping local development binaries:")
+		for _, t := range hdr.LoadRes.Tools {
+			if !t.CanUpdate() {
+				fmt.Printf("  %s %s\n", symBullet, t.Name())
+			}
 		}
+		fmt.Println()
 	}
 	return nil
 }
 
-func (TerminalRenderer) Verify(report VerifyReport) error {
+func (r TerminalRenderer) Inventory(report InventoryReport) error {
+	if len(report.Tools) == 0 && len(report.Invalid) == 0 {
+		fmt.Println("No Go tools found.")
+		return nil
+	}
+
+	maxNameLen := 4
 	maxVerLen := 7
-	for _, r := range report.Results {
-		if r.Healthy {
-			ver := r.Version
-			if ver == "" {
-				ver = r.Name
-			}
-			if len(ver) > maxVerLen {
-				maxVerLen = len(ver)
-			}
+	maxStatusLen := 7
+	for _, t := range report.Tools {
+		if len(t.Name) > maxNameLen {
+			maxNameLen = len(t.Name)
 		}
-	}
-	for _, inv := range report.Invalid {
-		if len(inv.Message) > maxVerLen {
-			maxVerLen = len(inv.Message)
+		if len(t.Version) > maxVerLen {
+			maxVerLen = len(t.Version)
+		}
+		if len(t.Status) > maxStatusLen {
+			maxStatusLen = len(t.Status)
 		}
 	}
 
-	healthy := 0
-	localCount := 0
-	for _, r := range report.Results {
-		if r.Healthy {
-			status := "✓"
-			extra := r.Version
-			if extra == "" {
-				extra = r.Name
-			}
-			format := fmt.Sprintf("%%s %%-15s %%-%ds  %%s\n", maxVerLen)
-			fmt.Printf(format, status, r.Name, extra, r.PackagePath)
-			healthy++
-			if r.PackagePath == "" || r.PackagePath == "(devel)" {
-				localCount++
-			}
-		} else {
-			fmt.Fprintf(os.Stderr, "✗ %-15s (%s)\n", r.Name, r.Error)
+	format := fmt.Sprintf("%%-%ds   %%-%ds   %%-%ds   %%s\n", maxNameLen, maxVerLen, maxStatusLen)
+	fmt.Printf(format, "NAME", "VERSION", "STATUS", "PACKAGE")
+
+	for _, t := range report.Tools {
+		if t.Name == "" {
+			continue
+		}
+		fmt.Printf(format, t.Name, t.Version, t.Status, t.PackagePath)
+		if t.Error != "" {
+			fmt.Fprintf(os.Stderr, "  ↳ %s\n", t.Error)
 		}
 	}
 
-	for _, inv := range report.Invalid {
-		fmt.Fprintf(os.Stderr, "✗ %-15s (%s)\n", inv.Path, inv.Message)
+	fmt.Println()
+	fmt.Println("Invalid / Uninspectable binaries")
+	fmt.Println()
+	if len(report.Invalid) > 0 {
+		for _, inv := range report.Invalid {
+			fmt.Printf("  %s %s (%s)\n", symBullet, inv.Path, inv.Message)
+		}
+	} else {
+		fmt.Println("  none")
 	}
 
-	fmt.Printf("\nHealthy    %d\n", report.Summary.Healthy)
-	fmt.Printf("Local      %d\n", report.Summary.Local)
-	fmt.Printf("Invalid    %d\n", report.Summary.Invalid)
-	fmt.Printf("Unhealthy  %d\n", report.Summary.Unhealthy)
-	if report.Summary.Unhealthy > 0 {
-		return fmt.Errorf("%d unhealthy binaries found", report.Summary.Unhealthy)
+	fmt.Println()
+	printSummaryBlock([][2]string{
+		{"Healthy", itoa(report.Summary.Healthy)},
+		{"Local", itoa(report.Summary.Local)},
+		{"Invalid", itoa(report.Summary.Invalid)},
+		{"Unhealthy", itoa(report.Summary.Unhealthy)},
+	})
+
+	if report.Summary.Unhealthy > 0 || report.Summary.Invalid > 0 {
+		return fmt.Errorf("%d issues found during inventory check", report.Summary.Unhealthy+report.Summary.Invalid)
 	}
 	return nil
 }
 
-func (TerminalRenderer) Outdated(report OutdatedReport) error {
+func (r TerminalRenderer) Plan(report PlanReport) error {
+	if len(report.WouldUpdate) > 0 {
+		fmt.Println("Would update")
+		fmt.Println()
+		for _, item := range report.WouldUpdate {
+			if r.verbose {
+				fmt.Printf("  %s\n", item.Name)
+				fmt.Printf("    Package : %s\n", item.PackagePath)
+				fmt.Printf("    Command : %s\n\n", item.Command)
+			} else {
+				fmt.Printf("  %s\n", item.Name)
+			}
+		}
+		fmt.Println()
+	}
+
+	if len(report.Skipped) > 0 {
+		fmt.Println("Skipped")
+		fmt.Println()
+		for _, item := range report.Skipped {
+			fmt.Printf("  %s %s\n", symBullet, item.Name)
+		}
+		fmt.Println()
+	}
+
+	printSummaryBlock([][2]string{
+		{"Would update", itoa(len(report.WouldUpdate))},
+		{"Skipped", itoa(len(report.Skipped))},
+	})
+	return nil
+}
+
+func (r TerminalRenderer) Outdated(report OutdatedReport) error {
 	maxNameLen := 4
 	maxCurrLen := 7
 	for _, o := range report.Results {
@@ -96,24 +152,29 @@ func (TerminalRenderer) Outdated(report OutdatedReport) error {
 
 	outdatedCount := 0
 	upToDateCount := 0
-
 	for _, o := range report.Results {
-		status := "✓"
+		status := symCheck
 		if o.Error != "" {
 			status = "error (" + o.Error + ")"
 		} else if o.Outdated {
-			status = "↑ " + o.Latest
+			status = symOutdated + " " + o.Latest
+			outdatedCount++
+		} else {
+			upToDateCount++
 		}
 		fmt.Printf(format, o.Name, o.Current, status)
 	}
+
 	fmt.Println()
-	fmt.Printf("%d tools checked\n\n", len(report.Results))
-	fmt.Printf("%d outdated\n", report.Summary.Outdated)
-	fmt.Printf("%d up-to-date\n", report.Summary.UpToDate)
+	printSummaryBlock([][2]string{
+		{"Checked", itoa(len(report.Results))},
+		{"Outdated", itoa(report.Summary.Outdated)},
+		{"Up-to-date", itoa(report.Summary.UpToDate)},
+	})
 	return nil
 }
 
-func (TerminalRenderer) OnProgress(p tool.Progress) {
+func (r TerminalRenderer) OnProgress(p tool.Progress) {
 	switch p.Action {
 	case "Start":
 		fmt.Printf("[%02d/%02d] %-18s", p.Current, p.Total, p.Tool.Name())
@@ -121,15 +182,15 @@ func (TerminalRenderer) OnProgress(p tool.Progress) {
 		fmt.Printf("  %s\n", p.Line)
 	case "Complete":
 		if p.Success && len(p.Notes) == 0 {
-			fmt.Printf("           ✓\n")
+			fmt.Printf("           %s\n", symCheck)
 		} else if p.Success && len(p.Notes) > 0 {
-			fmt.Printf("           ⓘ\n")
+			fmt.Printf("           %s\n", symNote)
 			fmt.Printf("  Package    %s\n", p.Tool.InstallTarget())
 			for _, note := range p.Notes {
 				fmt.Printf("  %s\n", note)
 			}
 		} else {
-			fmt.Printf("           ✗\n")
+			fmt.Printf("           %s\n", symFail)
 			fmt.Printf("  Error\n")
 			if p.Error != nil {
 				fmt.Printf("    %v\n", p.Error)
@@ -148,7 +209,7 @@ func (r TerminalRenderer) Update(report UpdateReport) error {
 		fmt.Println("Skipped")
 		fmt.Println()
 		for _, name := range report.Skipped {
-			fmt.Printf("• %s\n", name)
+			fmt.Printf("%s %s\n", symBullet, name)
 		}
 		fmt.Println()
 	}
@@ -158,19 +219,18 @@ func (r TerminalRenderer) Update(report UpdateReport) error {
 		fmt.Println("Diagnostics")
 		fmt.Println()
 		for _, d := range report.Diagnostics {
-			fmt.Printf("• %s\n", d.ToolName)
+			fmt.Printf("%s %s\n", symBullet, d.ToolName)
 			fmt.Printf("  Category : %s\n", d.Category)
 			fmt.Printf("  Message  : %s\n\n", d.Message)
 		}
 	}
 
-	fmt.Println()
-	fmt.Println("Summary")
-	fmt.Println()
-	fmt.Printf("Updated       %d\n", len(report.Updated))
-	fmt.Printf("Skipped       %d\n", len(report.Skipped))
-	fmt.Printf("Failed        %d\n", len(report.Failed))
-	fmt.Printf("Duration      %s\n", formatDuration(report.Duration))
+	printSummaryBlock([][2]string{
+		{"Updated", itoa(len(report.Updated))},
+		{"Skipped", itoa(len(report.Skipped))},
+		{"Failed", itoa(len(report.Failed))},
+		{"Duration", formatDuration(report.Duration)},
+	})
 
 	if len(report.Failed) > 0 {
 		fmt.Println()
@@ -184,55 +244,36 @@ func (r TerminalRenderer) Update(report UpdateReport) error {
 	return nil
 }
 
-func (TerminalRenderer) Check(report CheckReport) error {
-	for _, ct := range report.CheckTargets {
-		fmt.Printf("Would update %-16s -> %s\n", ct.Name, ct.InstallTarget)
-	}
-	fmt.Println()
-	fmt.Printf("Would update: %d\n", len(report.CheckTargets))
-	return nil
+// summaryLabelWidth aligns every summary block across all commands so each
+// renderer ends with the same visual rhythm: "Summary" then aligned values.
+const summaryLabelWidth = 14
+
+func printSummaryLine(label, value string) {
+	fmt.Printf("%-*s%s\n", summaryLabelWidth, label, value)
 }
 
-func (TerminalRenderer) DryRun(report DryRunReport) error {
-	fmt.Println("Update plan")
+func printSummaryBlock(rows [][2]string) {
+	fmt.Println("Summary")
 	fmt.Println()
-	for _, item := range report.ToUpdate {
-		fmt.Printf("  %s\n", item.Name)
-		fmt.Printf("    Package : %s\n", item.PackagePath)
-		fmt.Printf("    Command : %s\n\n", item.Command)
+	for _, row := range rows {
+		printSummaryLine(row[0], row[1])
 	}
-	if len(report.Skipped) > 0 {
-		fmt.Println("Skipped")
-		fmt.Println()
-		for _, item := range report.Skipped {
-			fmt.Printf("  • %s\n", item.Name)
-		}
-	}
-	return nil
 }
 
-func (TerminalRenderer) DryRun(report DryRunReport) error {
-	fmt.Println("Planning updates...")
-	fmt.Println()
-	fmt.Printf("%d tools selected\n", len(report.ToUpdate)+len(report.Skipped))
-	fmt.Println()
-	fmt.Println("Would update")
-	for _, item := range report.ToUpdate {
-		fmt.Printf("  %s\n", item.Name)
-		fmt.Printf("    %s\n", item.InstallTarget)
-	}
-	if len(report.Skipped) > 0 {
-		fmt.Println()
-		fmt.Println("Skipped")
-		fmt.Println()
-		for _, item := range report.Skipped {
-			fmt.Printf("  • %s\n", item.Name)
-		}
-	}
-	return nil
+func itoa(n int) string {
+	return strconv.Itoa(n)
 }
 
-func (TerminalRenderer) Info(loadRes tool.LoadResult, target string) error {
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	mins := int(d.Minutes())
+	secs := d.Seconds() - float64(mins*60)
+	return fmt.Sprintf("%dm%.1fs", mins, secs)
+}
+
+func (r TerminalRenderer) Info(loadRes tool.LoadResult, target string) error {
 	for _, t := range loadRes.Tools {
 		if t.Name() == target {
 			fmt.Printf("Binary\n\n  %s\n\n", t.Name())

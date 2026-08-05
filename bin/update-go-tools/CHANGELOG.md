@@ -4,8 +4,53 @@ All notable changes to update-go-tools are documented here.
 
 ## [Unreleased]
 
+## [v1.5.0]
+
 ### Changed
 
+* CLI consolidation, UX consistency & interface finalization:
+  * `--list` is now the single canonical inventory command and absorbs the
+    health reporting formerly exposed by `--verify`. It reports tool, version,
+    health status (`Healthy`/`Local`/`Unhealthy`/`Invalid`), and package.
+  * `--verify` is removed as an independent implementation; `--list` covers
+    verification.
+  * `--check` and `--dry-run` are aliases of a single planning operation with
+    one execution path. A new `--verbose`/`-V` output flag switches between the
+    concise summary (default) and the detailed execution plan
+    (packages + commands).
+  * New `--quiet`/`-q` renderer for scripting: suppresses banner, discovery
+    summary, progress, and per-tool status; emits only
+    `Updated`/`Skipped`/`Failed`/`Duration` plus diagnostics and failures.
+  * New `--ci` renderer: deterministic, ASCII-only, line-oriented terminal
+    output with no ANSI, no Unicode, no progress renderer, and no cursor
+    movement.
+  * `--json` is now a pure output renderer available on every operation with a
+    single stable schema; arrays are never `null` and ordering is deterministic.
+    Every response carries a JSON envelope with frozen `operation` values
+    (`list`, `check`, `update`, `outdated`; `--dry-run` reports `check`) and a
+    `success` boolean. No CLI version or timestamps are embedded.
+  * The discovery header (`Go:`, `Discovery`) moved from the CLI into renderers
+    so every operation follows `Go → Discovery → Body → Summary`.
+  * `Renderer` interface replaced `Verify`/`Check`/`DryRun` with a unified
+    `Plan` report and `Header`; concrete renderers are `Terminal`, `Quiet`,
+    `CI`, and `JSON`.
+  * Unified symbol set (`✓`, `•`, `✗`, `↑`, `ⓘ`) and summary-block formatting
+    across all human output; CI uses an ASCII equivalent.
+  * Final presentation polish: every command follows the canonical
+    `Go → Discovery → Body → Summary` rhythm, the `Scanning` action label was
+    replaced with a `Discovery` header, all summary blocks are visually
+    identical (aligned 14-character labels), and the plan command now ends
+    with the same `Summary` block instead of a duplicated `Would update: N`
+    count.
+  * `--quiet`/`-q` works on every operation (not just update), suppressing the
+    discovery header while keeping the requested data and summary.
+  * Help output groups output flags under `Output modifiers`.
+
+## [v1.4.0]
+
+### Changed
+
+* CLI version bumped to v1.4.0.
 * v1.4.0 architectural consolidation:
   * Renderers now consume immutable report structures instead of deriving statistics independently.
   * `Renderer` interface updated with `Inventory`, `Verify`, `Outdated`, `Update`, and `DryRun` report types.
@@ -15,12 +60,6 @@ All notable changes to update-go-tools are documented here.
   * Progress renderer dynamically expands only when subprocess output exists.
   * JSON output uses stable lowercase field names with `json` tags on all report structs.
   * All duplicated counting logic eliminated; `LoadSummary` is the single source of truth.
-
-## [v1.4.0]
-
-### Changed
-
-* CLI version bumped to v1.4.0.
 
 ## [v1.3.0]
 

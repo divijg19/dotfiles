@@ -8,36 +8,91 @@ and documentation evolve together.
 ## Package Layout
 
 ```
-cmd/update-go-tools/   CLI entrypoint: flag parsing, exit codes, output preamble.
+cmd/update-go-tools/   CLI entrypoint: flag parsing, renderer selection, exit codes.
 internal/app/          Orchestration (Run* methods) and output rendering.
-internal/tool/         Domain: discovery, metadata parsing, update, verify, outdated.
+internal/tool/         Domain: discovery, metadata parsing, update, outdated, verify.
 internal/testutil/     Hermetic fixture builder for tests.
 ```
 
 ## Layers
 
+```
+Discovery
+    ↓
+Inventory
+    ↓
+Operation
+    ↓
+Renderer
+```
+
+Operations:
+
+```
+Update
+List
+Plan
+Outdated
+```
+
+Renderers:
+
+```
+Terminal
+JSON
+Quiet
+CI
+```
+
+Business logic must not know about formatting. Renderers must not contain
+business logic.
+
 ### cmd
 
 The `main` package is intentionally thin. It:
 
-* parses flags (`--json`, `--check`, and positional tool names),
-* selects a `Renderer`,
+* parses flags (`--json`, `--quiet`/`-q`, `--ci`, `--verbose`, `--check`,
+  `--dry-run`, and positional tool names),
+* selects a `Renderer` via `app.NewRenderer(mode, verbose)`,
 * constructs the `App`,
-* maps `Runner` errors to exit codes,
-* prints the Go-version and tool-count preamble for the default update path.
+* renders the discovery `Header` through the selected renderer,
+* maps `Runner` errors to exit codes.
 
 It contains no domain logic. Business rules live in `internal/app` and
 `internal/tool`.
 
+`--check` and `--dry-run` are both routed to the same `RunPlan` operation; they
+are aliases with a single execution path. `--verbose` only affects how the
+planning renderer presents the report.
+
 ### internal/app
 
 `App` orchestrates a command from start to finish: it loads the inventory once
-and hands it to a `Renderer`. It never touches the terminal directly.
+and hands immutable report structures to a `Renderer`. It never touches the
+terminal directly.
 
 The `Renderer` interface exists because output is a public API (see contract
-§5/§6). `TerminalRenderer` and `JSONRenderer` are two real implementations, not
-an abstraction awaiting a second consumer. The interface boundary is justified:
-it isolates the presentation of each command and keeps JSON free of formatting.
+§5/§6). The four concrete implementations are `TerminalRenderer`,
+`JSONRenderer`, `QuietRenderer`, and `CIRenderer` — each is a distinct,
+well-defined output mode, selected by `RenderMode`. The interface boundary
+isolates presentation and keeps JSON, quiet, and CI output free of incidental
+formatting.
+
+`Renderer` methods:
+
+* `Header(HeaderInfo)` — the `Go`/`Discovery` header. JSON and quiet
+  renderers no-op it; the header therefore belongs to the renderer, not the
+  CLI, so every operation shares the same `Go → Discovery → Body → Summary`
+  shape.
+* `Inventory(InventoryReport)` — `--list`.
+* `Plan(PlanReport)` — `--check` / `--dry-run`.
+* `Outdated(OutdatedReport)` — `--outdated`.
+* `Update(UpdateReport)` — default update.
+* `Info(...)` — `--info <tool>`.
+
+The optional `ProgressSink` interface (`OnProgress`) is implemented only by the
+interactive `TerminalRenderer`; business logic probes for it via type
+assertion so non-interactive modes stay deterministic.
 
 ### internal/tool
 
@@ -53,6 +108,24 @@ resolution are deterministic.
 `GetGobin` intentionally uses the `go` toolchain to avoid reimplementing
 GOPATH/GOBIN resolution and to honor user overrides.
 
+## Renderers
+
+* `TerminalRenderer` — human-oriented. Unicode symbol set
+  (`✓` healthy, `•` skipped, `✗` failed, `↑` outdated, `ⓘ` note), dynamic
+  column widths with consistent spacing, streaming progress during updates.
+* `JSONRenderer` — pure data. Stable schema, arrays never `null`, deterministic
+  ordering, no presentation formatting. Every report carries an
+  `OperationEnvelope` (`operation`, `success`) set by the application layer;
+  the renderer only serializes it and never branches on it. Human renderers
+  ignore the envelope entirely.
+* `QuietRenderer` — scripting mode. Same visual language as Terminal but
+  suppresses the header, discovery summary, progress, and per-tool status;
+  update emits only the summary plus diagnostics and failures.
+* `CIRenderer` — deterministic machine-oriented terminal output. ASCII-only,
+  line-oriented, no progress renderer, no cursor movement, reproducible across
+  environments. `--verbose` selects the detailed planning view for
+  human renderers.
+
 ## Determinism
 
 * Discovery sorts candidates alphabetically.
@@ -61,12 +134,14 @@ GOPATH/GOBIN resolution and to honor user overrides.
 * Version ordering uses `golang.org/x/mod/semver` for deterministic comparison.
 * Renderers receive immutable report structures and perform presentation only.
 * Discovery happens once per invocation and is cached by `App`.
+* CI mode performs no streaming or timing-dependent rendering; output is
+  line-oriented and stable.
 
 ## Why interfaces exist
 
 * `Runner`: second implementation (a mock) exists in tests; it also gives
   context-aware execution.
-* `Renderer`: two concrete implementations exist, and it isolates presentation
+* `Renderer`: four concrete implementations exist, and it isolates presentation
   as a stable contract.
 
 Interfaces without a second consumer were avoided. Orchestration is not spread
@@ -76,5 +151,5 @@ across packages: the CLI does not re-scan GOBIN after loading it once.
 
 Every external operation specifies its possible failure and the exit code it
 maps to (`ExitEnv` for environment, `ExitUsage` for misuse, `ExitFailure` for
-update/verify failures). Renderers propagate marshal errors rather than
+update/inventory failures). Renderers propagate marshal errors rather than
 swallowing them.

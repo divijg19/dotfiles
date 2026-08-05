@@ -1,8 +1,0 @@
-✓ hello           v1.0.0   example.com/hello
-✓ localdev        (devel)  example.com/localdev
-✓ world           v1.2.0   example.com/world
-
-Healthy    3
-Local      1
-Invalid    1
-Unhealthy  1

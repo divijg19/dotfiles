@@ -14,7 +14,13 @@ Skipping local development binaries:
 Would update
 
   hello
+    Package : example.com/hello
+    Command : go install example.com/hello@latest
+
   world
+    Package : example.com/world
+    Command : go install example.com/world@latest
+
 
 Skipped
 
