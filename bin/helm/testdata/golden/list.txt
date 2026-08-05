@@ -1,0 +1,28 @@
+Go: goVERSION
+
+Discovery
+
+  Gobin       : <TMP>/gobin
+  Executables : 4
+  Updatable   : 2
+  Local       : 1
+  Invalid     : 1
+
+Skipping local development binaries:
+  • localdev
+
+NAME       VERSION   STATUS    PACKAGE
+hello      v1.0.0    Healthy   example.com/hello
+localdev   (devel)   Local     example.com/localdev
+world      v1.2.0    Healthy   example.com/world
+
+Invalid / Uninspectable binaries
+
+  • <TMP>/gobin/notgo (missing or unreadable build info)
+
+Summary
+
+Healthy       3
+Local         1
+Invalid       1
+Unhealthy     1

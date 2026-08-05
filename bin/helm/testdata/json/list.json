@@ -1,0 +1,24 @@
+{
+  "operation": "list",
+  "success": false,
+  "tools": [
+    {
+      "name": "hello",
+      "version": "v1.0.0",
+      "package_path": "example.com/hello",
+      "module_path": "example.com/hello"
+    },
+    {
+      "name": "localdev",
+      "version": "(devel)",
+      "package_path": "example.com/localdev",
+      "module_path": "example.com/localdev"
+    },
+    {
+      "name": "world",
+      "version": "v1.2.0",
+      "package_path": "example.com/world",
+      "module_path": "example.com/world"
+    }
+  ]
+}

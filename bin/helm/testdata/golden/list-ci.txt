@@ -1,0 +1,16 @@
+gobin: <TMP>/gobin
+go-version: goVERSION
+executables: 4
+updatable: 2
+local: 1
+invalid: 1
+
+hello                 v1.0.0            OK         example.com/hello
+localdev              (devel)           LOCAL      example.com/localdev
+world                 v1.2.0            OK         example.com/world
+invalid: <TMP>/gobin/notgo (missing or unreadable build info)
+
+healthy: 3
+local: 1
+invalid: 1
+unhealthy: 1

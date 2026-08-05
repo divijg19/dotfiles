@@ -1,0 +1,33 @@
+Go: goVERSION
+
+Discovery
+
+  Gobin       : <TMP>/gobin
+  Executables : 4
+  Updatable   : 2
+  Local       : 1
+  Invalid     : 1
+
+Skipping local development binaries:
+  • localdev
+
+Would update
+
+  hello
+    Package : example.com/hello
+    Command : go install example.com/hello@latest
+
+  world
+    Package : example.com/world
+    Command : go install example.com/world@latest
+
+
+Skipped
+
+  • localdev
+  • <TMP>/gobin/notgo
+
+Summary
+
+Would update  2
+Skipped       2

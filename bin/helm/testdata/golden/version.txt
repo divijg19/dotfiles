@@ -1,0 +1,3 @@
+Helm v1.6.0-test
+Commit    abc1234
+Built     2026-08-05

@@ -1,0 +1,12 @@
+{
+  "operation": "update",
+  "success": true,
+  "updated": [
+    "hello",
+    "world"
+  ],
+  "skipped": [
+    "<TMP>/gobin/notgo"
+  ],
+  "failed": []
+}
