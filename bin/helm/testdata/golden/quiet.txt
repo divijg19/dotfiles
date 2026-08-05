@@ -1,4 +1,0 @@
-Updated       2
-Skipped       1
-Failed        0
-Duration      0.0s
