@@ -1,0 +1,14 @@
+gobin: <TMP>/gobin
+go-version: goVERSION
+executables: 4
+updatable: 2
+local: 1
+invalid: 1
+
+updated: hello
+updated: world
+skipped: <TMP>/gobin/notgo
+
+updated-count: 2
+skipped-count: 1
+failed-count: 0

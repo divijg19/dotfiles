@@ -1,0 +1,32 @@
+Helm v1.6.0-test - Inspect, inventory, and update Go-managed tools
+
+Usage:
+    helm [tool...]
+    helm --list [--json|--ci|--quiet]
+    helm --check/--dry-run [--verbose|-V]
+    helm --outdated [--json|--ci]
+    helm --info <tool>
+    helm --json
+    helm --quiet | -q
+    helm --ci
+    helm --help
+    helm --version
+
+Operations:
+    --list             List all Go-managed tools with versions, health status, and packages
+    --check/--dry-run  Summarize pending updates without executing them (aliases)
+    --outdated         Check upstream releases for installed tools
+    --info             Show detailed metadata for a specific tool
+
+Output modifiers:
+    --json       Emit machine-readable JSON for any operation
+    --quiet, -q  Suppress the discovery header and chatter; emit only the requested data and summary
+    --ci         Deterministic, ASCII-only, line-oriented terminal output
+    --verbose, -V  Detailed planning view (packages and install commands)
+
+Utility:
+    --help       Display this help message
+    --version    Display version information
+
+Without arguments, updates all discovered Go tools.
+With one or more tool names, updates only those specified tools.
