@@ -1,7 +1,5 @@
 # dotfiles
 
-Personal dotfiles for divijg19.
-
 ## Installation
 
 ### Core Configuration Installer
