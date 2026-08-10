@@ -5,25 +5,49 @@ set -e
 DEFAULT_INSTALL_DIR="${HOME}/.local/bin"
 GITHUB_OWNER="divijg19"
 GITHUB_REPO="dotfiles"
-BIN_API_URL="https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/contents/bin"
-DOTFILES="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-BIN_DIR="$DOTFILES/bin"
+DOTFILES_RAW_URL="https://raw.githubusercontent.com/$GITHUB_OWNER/$GITHUB_REPO/main"
 
-# Extract top-level names from the GitHub Contents API response for bin/
-fetch_tools() {
-  local response
-  response="$(curl -fsSL "$BIN_API_URL")" || return 1
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+  DOTFILES="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+else
+  DOTFILES=""
+fi
+BIN_DIR="${DOTFILES:+$DOTFILES/bin}"
 
-  if command -v python3 &> /dev/null; then
-    echo "$response" | python3 -c "
-import sys, json
-for item in json.load(sys.stdin):
-    print(item['name'])
-"
+# Obtain raw .gitmodules content (local-first, remote-fallback)
+fetch_gitmodules() {
+  if [ -n "$DOTFILES" ] && [ -f "$DOTFILES/.gitmodules" ]; then
+    cat "$DOTFILES/.gitmodules"
   else
-    # Fallback: JSON lines are one object per line, name appears once per object
-    echo "$response" | sed -n 's/^[[:space:]]*"name":[[:space:]]*"\([^"]*\)".*/\1/p'
+    curl -fsSL "$DOTFILES_RAW_URL/.gitmodules"
   fi
+}
+
+# Parse .gitmodules to output "name url" lines
+parse_gitmodules() {
+  local content
+  content="$(fetch_gitmodules)" || return 1
+
+  awk '
+    /^\[submodule/ {
+      name = ""
+    }
+    /^\[submodule "bin\// {
+      match($0, /"bin\/([^"]+)"/, m)
+      name = m[1]
+    }
+    /url[ \t]*=/ {
+      url = $0
+      sub(/^.*url[ \t]*=[ \t]*/, "", url)
+      sub(/[ \t\r]*$/, "", url)
+      sub(/^git@github-[^:]+:/, "https://github.com/", url)
+      sub(/^git@github\.com:/, "https://github.com/", url)
+      if (name != "") {
+        print name " " url
+        name = ""
+      }
+    }
+  ' <<< "$content"
 }
 
 echo "=========================================="
@@ -43,15 +67,20 @@ esac
 echo "Detected OS: $OS, Architecture: $ARCH"
 echo
 
-# --- Discover tools: top-level repository names in dotfiles/bin on GitHub ---
-echo "Discovering tools in dotfiles/bin..."
-if ! mapfile -t projects < <(fetch_tools); then
-  echo "Error: could not fetch the tool list from $BIN_API_URL" >&2
-  exit 1
-fi
+# --- Discover tools: top-level repository names from .gitmodules ---
+echo "Discovering tools from .gitmodules..."
+declare -a projects=()
+declare -A project_urls=()
+
+while read -r p_name p_url; do
+  if [ -n "$p_name" ]; then
+    projects+=("$p_name")
+    project_urls["$p_name"]="$p_url"
+  fi
+done < <(parse_gitmodules)
 
 if [ ${#projects[@]} -eq 0 ]; then
-  echo "Error: no tools found under dotfiles/bin." >&2
+  echo "Error: no tools found in .gitmodules." >&2
   exit 1
 fi
 
@@ -133,8 +162,9 @@ for proj in "${!selected[@]}"; do
         else
           # Run via curl | bash or uninitialized submodule: shallow clone on-the-fly
           temp_dir="$(mktemp -d)"
-          echo "    Cloning repository for $proj on-the-fly..."
-          git clone --depth 1 "https://github.com/$GITHUB_OWNER/$proj.git" "$temp_dir"
+          repo_url="${project_urls[$proj]:-https://github.com/$GITHUB_OWNER/$proj.git}"
+          echo "    Cloning repository for $proj from $repo_url..."
+          git clone --depth 1 "$repo_url" "$temp_dir"
           src_dir="$temp_dir"
         fi
 
