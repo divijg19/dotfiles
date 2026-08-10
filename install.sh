@@ -50,6 +50,109 @@ parse_gitmodules() {
   ' <<< "$content"
 }
 
+# Resolve and install pre-compiled release binary using GitHub Releases API
+resolve_and_install_release() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local proj="$1"
+  local proj_lower="${proj,,}"
+  local install_path="$INSTALL_DIR/$proj"
+
+  local release_json
+  if ! release_json=$(curl -sL "https://api.github.com/repos/$GITHUB_OWNER/$proj/releases/latest"); then
+    return 1
+  fi
+
+  local tag
+  tag=$(echo "$release_json" | python3 -c '
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    tag = data.get("tag_name", "")
+    if tag:
+        print(tag)
+except Exception:
+    pass
+' 2>/dev/null || true)
+
+  if [ -z "$tag" ]; then
+    return 1
+  fi
+
+  local matched_url
+  if ! matched_url=$(echo "$release_json" | python3 -c '
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    assets = data.get("assets", [])
+    os_name = sys.argv[1].lower()
+    arch = sys.argv[2].lower()
+
+    for asset in assets:
+        name = asset.get("name", "")
+        url = asset.get("browser_download_url", "")
+        if not name or not url:
+            continue
+        name_lower = name.lower()
+        if any(ex in name_lower for ex in [".sha256", ".md5", ".txt", "checksum", "manifest", "sig"]):
+            continue
+        # GoReleaser-style tarball: <project>_v<version>_<os>_<arch>.tar.gz
+        if name_lower.startswith(proj_lower + "_v") and os_name in name_lower and arch in name_lower:
+            print(url)
+            sys.exit(0)
+        # Direct binary: <project>-v<version>-<os>_<arch>
+        if name_lower.startswith(proj_lower + "-v") and os_name in name_lower and arch in name_lower:
+            print(url)
+            sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+' "$OS" "$ARCH" 2>/dev/null || true); then
+    return 1
+  fi
+
+  if [ -z "$matched_url" ]; then
+    return 1
+  fi
+
+  echo "    Downloading release asset for $proj..."
+  local fname
+  fname=$(basename "$matched_url")
+
+  if [[ "$fname" == *.tar.gz ]]; then
+    local temp_archive
+    temp_archive=$(mktemp /tmp/installer-XXXXXX.tar.gz)
+    if curl -fsSL "$matched_url" -o "$temp_archive"; then
+      local temp_extract_dir
+      temp_extract_dir=$(mktemp -d /tmp/extract-XXXXXX)
+      if tar -xzf "$temp_archive" -C "$temp_extract_dir"; then
+        local found_bin
+        found_bin=$(find "$temp_extract_dir" -type f -name "$proj_lower" -print -quit)
+        if [ -n "$found_bin" ]; then
+          mv "$found_bin" "$install_path"
+          chmod +x "$install_path"
+          echo "    Successfully installed pre-compiled $proj to $install_path"
+          rm -rf "$temp_extract_dir"
+          rm -f "$temp_archive"
+          return 0
+        fi
+      fi
+      rm -rf "$temp_extract_dir"
+    fi
+    rm -f "$temp_archive"
+  else
+    if curl -fsSL "$matched_url" -o "$install_path"; then
+      chmod +x "$install_path"
+      echo "    Successfully installed pre-compiled $proj to $install_path"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
 echo "=========================================="
 echo "          Dotfiles Binary Installer       "
 echo "=========================================="
@@ -129,15 +232,9 @@ for proj in "${!selected[@]}"; do
 
   echo "--> Processing $proj..."
 
-  # 1. Try downloading pre-compiled release binary from GitHub standalone releases
-  release_url="https://github.com/$GITHUB_OWNER/$proj/releases/latest/download/$proj-$OS-$ARCH"
-  if curl --output /dev/null --silent --head --fail "$release_url"; then
-    echo "    Downloading pre-compiled release for $proj..."
-    if curl -fsSL "$release_url" -o "$INSTALL_DIR/$proj"; then
-      chmod +x "$INSTALL_DIR/$proj"
-      echo "    Successfully installed pre-compiled $proj to $INSTALL_DIR/$proj"
-      installed=1
-    fi
+  echo "    Resolving latest release for $proj..."
+  if resolve_and_install_release "$proj"; then
+    installed=1
   fi
 
   # 2. Per-project fallback menu if the pre-compiled download failed
