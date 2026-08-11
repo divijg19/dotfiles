@@ -434,3 +434,5 @@ else
   echo "Installation completed with issues."
 fi
 echo "Make sure $INSTALL_DIR is in your PATH."
+
+exit $((failed_count > 0 ? 1 : 0))
