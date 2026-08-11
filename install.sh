@@ -52,43 +52,78 @@ parse_gitmodules() {
 
 # Resolve and install pre-compiled release binary using GitHub Releases API
 resolve_and_install_release() {
-  if ! command -v python3 >/dev/null 2>&1; then
-    return 1
-  fi
-
   local proj="$1"
   local proj_lower="${proj,,}"
   local install_path="$INSTALL_DIR/$proj"
+  release_fail_reason=""
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    release_fail_reason="Python 3 is required to resolve release metadata but is not installed."
+    return 1
+  fi
 
   local release_json
   if ! release_json=$(curl -sL "https://api.github.com/repos/$GITHUB_OWNER/$proj/releases/latest"); then
+    release_fail_reason="Release lookup failed for $proj (network or API error)."
     return 1
   fi
 
-  local tag
-  tag=$(echo "$release_json" | python3 -c '
+  # Classify the structured API response before doing anything else.
+  # Valid release JSON carries tag_name; GitHub error responses carry message/status.
+  local api_response
+  api_response=$(echo "$release_json" | python3 -c '
 import sys, json
 try:
     data = json.load(sys.stdin)
-    tag = data.get("tag_name", "")
-    if tag:
-        print(tag)
 except Exception:
-    pass
+    print("unrecognized")
+    sys.exit(0)
+
+if data.get("tag_name"):
+    print("valid")
+    sys.exit(0)
+
+status = str(data.get("status", ""))
+if status == "403":
+    print("rate-limited")
+elif status == "404":
+    print("no-release")
+elif data.get("message"):
+    print("api-error")
+else:
+    print("unrecognized")
 ' 2>/dev/null || true)
 
-  if [ -z "$tag" ]; then
-    return 1
-  fi
+  case "$api_response" in
+    valid) ;;
+    rate-limited)
+      release_fail_reason="GitHub API rate limit exceeded while checking $proj. Try again later or use a fallback method."
+      return 1
+      ;;
+    no-release)
+      release_fail_reason="No published GitHub release for $proj."
+      return 1
+      ;;
+    api-error)
+      release_fail_reason="GitHub API returned an error while checking $proj."
+      return 1
+      ;;
+    *)
+      release_fail_reason="GitHub returned an unrecognized response while checking $proj."
+      return 1
+      ;;
+  esac
 
+  # Valid release: select the asset matching this OS and architecture.
   local matched_url
-  if ! matched_url=$(echo "$release_json" | python3 -c '
+  matched_url=$(echo "$release_json" | python3 -c '
 import sys, json
 try:
     data = json.load(sys.stdin)
     assets = data.get("assets", [])
     os_name = sys.argv[1].lower()
     arch = sys.argv[2].lower()
+    proj_lower = sys.argv[3].lower()
 
     for asset in assets:
         name = asset.get("name", "")
@@ -109,11 +144,10 @@ try:
 except Exception:
     pass
 sys.exit(1)
-' "$OS" "$ARCH" 2>/dev/null || true); then
-    return 1
-  fi
+' "$OS" "$ARCH" "$proj_lower" 2>/dev/null || true)
 
   if [ -z "$matched_url" ]; then
+    release_fail_reason="No release asset matching $OS/$ARCH for $proj."
     return 1
   fi
 
@@ -138,8 +172,11 @@ sys.exit(1)
           rm -f "$temp_archive"
           return 0
         fi
+        release_fail_reason="Release archive for $proj did not contain an executable named '$proj_lower'."
       fi
       rm -rf "$temp_extract_dir"
+    else
+      release_fail_reason="Download failed for the release asset of $proj."
     fi
     rm -f "$temp_archive"
   else
@@ -148,6 +185,7 @@ sys.exit(1)
       echo "    Successfully installed pre-compiled $proj to $install_path"
       return 0
     fi
+    release_fail_reason="Download failed for the release asset of $proj."
   fi
 
   return 1
@@ -235,6 +273,8 @@ for proj in "${!selected[@]}"; do
   echo "    Resolving latest release for $proj..."
   if resolve_and_install_release "$proj"; then
     installed=1
+  else
+    echo "    ${release_fail_reason:-Release lookup failed for $proj.}"
   fi
 
   # 2. Per-project fallback menu if the pre-compiled download failed
