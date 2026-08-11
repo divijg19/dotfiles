@@ -62,57 +62,54 @@ resolve_and_install_release() {
     return 1
   fi
 
-  local release_json
-  if ! release_json=$(curl -sL "https://api.github.com/repos/$GITHUB_OWNER/$proj/releases/latest"); then
-    release_fail_reason="Release lookup failed for $proj (network or API error)."
+  # Capture the HTTP status separately from the body. GitHub error responses do
+  # not carry a reliable status field in the JSON, so the HTTP code is the
+  # authoritative classifier. Without -f, curl exits non-zero only on transport
+  # failures, leaving HTTP errors to be classified by the status code below.
+  local response_file
+  response_file="$(mktemp)"
+  local http_code
+  if ! http_code=$(curl -sL -o "$response_file" -w "%{http_code}" "https://api.github.com/repos/$GITHUB_OWNER/$proj/releases/latest" 2>/dev/null); then
+    rm -f "$response_file"
+    release_fail_reason="Release lookup failed for $proj due to a network or transport error."
     return 1
   fi
 
-  # Classify the structured API response before doing anything else.
-  # Valid release JSON carries tag_name; GitHub error responses carry message/status.
+  local release_json
+  release_json="$(cat "$response_file" 2>/dev/null || true)"
+  rm -f "$response_file"
+
+  case "$http_code" in
+    403)
+      release_fail_reason="GitHub API rate limit exceeded while checking $proj."
+      return 1
+      ;;
+    404)
+      release_fail_reason="No published GitHub release for $proj."
+      return 1
+      ;;
+    200) ;;
+    *)
+      release_fail_reason="GitHub API returned HTTP $http_code while checking $proj."
+      return 1
+      ;;
+  esac
+
+  # HTTP 200: confirm the body is valid release metadata before matching assets.
   local api_response
   api_response=$(echo "$release_json" | python3 -c '
 import sys, json
 try:
     data = json.load(sys.stdin)
+    print("valid" if data.get("tag_name") else "unrecognized")
 except Exception:
-    print("unrecognized")
-    sys.exit(0)
-
-if data.get("tag_name"):
-    print("valid")
-    sys.exit(0)
-
-status = str(data.get("status", ""))
-if status == "403":
-    print("rate-limited")
-elif status == "404":
-    print("no-release")
-elif data.get("message"):
-    print("api-error")
-else:
     print("unrecognized")
 ' 2>/dev/null || true)
 
-  case "$api_response" in
-    valid) ;;
-    rate-limited)
-      release_fail_reason="GitHub API rate limit exceeded while checking $proj. Try again later or use a fallback method."
-      return 1
-      ;;
-    no-release)
-      release_fail_reason="No published GitHub release for $proj."
-      return 1
-      ;;
-    api-error)
-      release_fail_reason="GitHub API returned an error while checking $proj."
-      return 1
-      ;;
-    *)
-      release_fail_reason="GitHub returned an unrecognized response while checking $proj."
-      return 1
-      ;;
-  esac
+  if [ "$api_response" != "valid" ]; then
+    release_fail_reason="GitHub returned an unrecognized response while checking $proj."
+    return 1
+  fi
 
   # Valid release: select the asset matching this OS and architecture.
   local matched_url
@@ -265,20 +262,27 @@ echo "------------------------------------------"
 echo "Installing selected projects..."
 echo "------------------------------------------"
 
+installed_count=0
+skipped_count=0
+failed_count=0
+installed_projects=()
+skipped_projects=()
+failed_projects=()
+
 for proj in "${!selected[@]}"; do
-  installed=0
+  outcome=""
 
   echo "--> Processing $proj..."
 
   echo "    Resolving latest release for $proj..."
   if resolve_and_install_release "$proj"; then
-    installed=1
+    outcome="installed"
   else
     echo "    ${release_fail_reason:-Release lookup failed for $proj.}"
   fi
 
   # 2. Per-project fallback menu if the pre-compiled download failed
-  if [ $installed -eq 0 ]; then
+  if [ -z "$outcome" ]; then
     echo "    ⚠️  Could not fetch a pre-compiled binary for $proj."
     echo "    Choose a fallback method:"
     echo "      1) go build (build from local submodule or a shallow on-the-fly clone)"
@@ -287,6 +291,9 @@ for proj in "${!selected[@]}"; do
     echo "      4) Skip this project"
     read -r -p "    Enter choice [1-4] (default 1): " fallback_choice < /dev/tty || true
     fallback_choice="${fallback_choice:-1}"
+
+    # An unrecognized choice is an invalid selection, not an implicit skip.
+    # Only an explicit "4" means the user chose to skip this project.
 
     case "$fallback_choice" in
       1)
@@ -301,7 +308,11 @@ for proj in "${!selected[@]}"; do
           temp_dir="$(mktemp -d)"
           repo_url="${project_urls[$proj]:-https://github.com/$GITHUB_OWNER/$proj.git}"
           echo "    Cloning repository for $proj from $repo_url..."
-          git clone --depth 1 "$repo_url" "$temp_dir"
+          if ! git clone --depth 1 "$repo_url" "$temp_dir"; then
+            echo "    ❌ Error: Failed to clone repository for $proj."
+            rm -rf "$temp_dir"
+            temp_dir=""
+          fi
           src_dir="$temp_dir"
         fi
 
@@ -324,8 +335,12 @@ for proj in "${!selected[@]}"; do
           mkdir -p "$proj_install_dir"
 
           echo "    Building $proj locally from $build_target..."
-          go build -o "$proj_install_dir/$proj" "$build_target"
-          echo "    Successfully built and installed $proj to $proj_install_dir/$proj"
+          if go build -o "$proj_install_dir/$proj" "$build_target"; then
+            echo "    Successfully built and installed $proj to $proj_install_dir/$proj"
+            outcome="installed"
+          else
+            echo "    ❌ Error: Failed to build $proj from $build_target."
+          fi
           popd > /dev/null
         else
           echo "    ❌ Error: No go.mod found for $proj, cannot build locally."
@@ -345,8 +360,12 @@ for proj in "${!selected[@]}"; do
 
           export GOBIN="$proj_install_dir"
           echo "    Running go install for $mod_path..."
-          go install "$mod_path"
-          echo "    Successfully installed $proj via go install to $proj_install_dir/"
+          if go install "$mod_path"; then
+            echo "    Successfully installed $proj via go install to $proj_install_dir/"
+            outcome="installed"
+          else
+            echo "    ❌ Error: Failed to install $proj via go install."
+          fi
         else
           echo "    ❌ Error: Module path cannot be empty."
         fi
@@ -362,6 +381,7 @@ for proj in "${!selected[@]}"; do
           if curl -fsSL "$custom_url" -o "$proj_install_dir/$proj"; then
             chmod +x "$proj_install_dir/$proj"
             echo "    Successfully downloaded and installed $proj to $proj_install_dir/$proj"
+            outcome="installed"
           else
             echo "    ❌ Error: Failed to download from $custom_url."
           fi
@@ -369,14 +389,48 @@ for proj in "${!selected[@]}"; do
           echo "    ❌ Error: URL cannot be empty."
         fi
         ;;
-      *)
+      4)
         echo "    Skipping $proj."
+        outcome="skipped"
+        ;;
+      *)
+        echo "    ❌ Error: Invalid fallback choice '$fallback_choice' for $proj."
+        echo "             Expected 1, 2, 3, or 4."
         ;;
     esac
   fi
+
+  case "$outcome" in
+    installed) installed_count=$((installed_count + 1)); installed_projects+=("$proj") ;;
+    skipped)   skipped_count=$((skipped_count + 1));     skipped_projects+=("$proj") ;;
+    *)         failed_count=$((failed_count + 1));       failed_projects+=("$proj") ;;
+  esac
   echo
 done
 
 echo "=========================================="
-echo "Installation process complete!"
+echo "Installation Summary"
+echo "=========================================="
+echo
+echo "Installed: $installed_count"
+if [ "${#installed_projects[@]}" -gt 0 ]; then
+  printf '  %s\n' "${installed_projects[@]}"
+fi
+echo "Skipped:   $skipped_count"
+if [ "${#skipped_projects[@]}" -gt 0 ]; then
+  printf '  %s\n' "${skipped_projects[@]}"
+fi
+echo "Failed:    $failed_count"
+if [ "${#failed_projects[@]}" -gt 0 ]; then
+  printf '  %s\n' "${failed_projects[@]}"
+fi
+echo
+echo "Installation directory:"
+echo "  $INSTALL_DIR"
+echo
+if [ "$failed_count" -eq 0 ]; then
+  echo "Installation completed successfully."
+else
+  echo "Installation completed with issues."
+fi
 echo "Make sure $INSTALL_DIR is in your PATH."
