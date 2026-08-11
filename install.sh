@@ -50,101 +50,87 @@ parse_gitmodules() {
   ' <<< "$content"
 }
 
-# Resolve and install pre-compiled release binary using GitHub Releases API
+# Resolve and install pre-compiled release binary using GitHub release redirects and candidate probing
 resolve_and_install_release() {
   local proj="$1"
   local proj_lower="${proj,,}"
   local install_path="$INSTALL_DIR/$proj"
   release_fail_reason=""
 
-  if ! command -v python3 >/dev/null 2>&1; then
-    release_fail_reason="Python 3 is required to resolve release metadata but is not installed."
-    return 1
-  fi
-
-  # Capture the HTTP status separately from the body. GitHub error responses do
-  # not carry a reliable status field in the JSON, so the HTTP code is the
-  # authoritative classifier. Without -f, curl exits non-zero only on transport
-  # failures, leaving HTTP errors to be classified by the status code below.
-  local response_file
-  response_file="$(mktemp)"
+  # 1. Resolve latest tag via GitHub redirect (HEAD request)
+  local headers_file
+  headers_file="$(mktemp)"
   local http_code
-  if ! http_code=$(curl -sL -o "$response_file" -w "%{http_code}" "https://api.github.com/repos/$GITHUB_OWNER/$proj/releases/latest" 2>/dev/null); then
-    rm -f "$response_file"
+  if ! http_code=$(curl -sI -D "$headers_file" -o /dev/null -w "%{http_code}" "https://github.com/$GITHUB_OWNER/$proj/releases/latest" 2>/dev/null); then
+    rm -f "$headers_file"
     release_fail_reason="Release lookup failed for $proj due to a network or transport error."
     return 1
   fi
 
-  local release_json
-  release_json="$(cat "$response_file" 2>/dev/null || true)"
-  rm -f "$response_file"
+  local location_line
+  location_line=$(awk -F': ' 'BEGIN { IGNORECASE=1 } /^Location:/ {print $2}' "$headers_file" | tr -d '\r')
+  rm -f "$headers_file"
 
   case "$http_code" in
     403)
-      release_fail_reason="GitHub API rate limit exceeded while checking $proj."
+      release_fail_reason="GitHub rate limit exceeded while checking $proj."
       return 1
       ;;
     404)
       release_fail_reason="No published GitHub release for $proj."
       return 1
       ;;
-    200) ;;
+    301|302|307|308|200) ;;
     *)
-      release_fail_reason="GitHub API returned HTTP $http_code while checking $proj."
+      release_fail_reason="Could not resolve latest GitHub release for $proj."
       return 1
       ;;
   esac
 
-  # HTTP 200: confirm the body is valid release metadata before matching assets.
-  local api_response
-  api_response=$(echo "$release_json" | python3 -c '
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    print("valid" if data.get("tag_name") else "unrecognized")
-except Exception:
-    print("unrecognized")
-' 2>/dev/null || true)
+  local tag
+  tag=$(echo "$location_line" | sed -n 's|.*/tag/\([^/?#]*\).*|\1|p')
 
-  if [ "$api_response" != "valid" ]; then
-    release_fail_reason="GitHub returned an unrecognized response while checking $proj."
+  if [ -z "$tag" ]; then
+    release_fail_reason="Could not resolve latest GitHub release for $proj."
     return 1
   fi
 
-  # Valid release: select the asset matching this OS and architecture.
-  local matched_url
-  matched_url=$(echo "$release_json" | python3 -c '
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    assets = data.get("assets", [])
-    os_name = sys.argv[1].lower()
-    arch = sys.argv[2].lower()
-    proj_lower = sys.argv[3].lower()
+  # 2. Construct release asset candidates based on OS and ARCH
+  local os_variants=("$OS")
+  if [ "$OS" = "darwin" ]; then
+    os_variants=("darwin" "mac")
+  fi
 
-    for asset in assets:
-        name = asset.get("name", "")
-        url = asset.get("browser_download_url", "")
-        if not name or not url:
-            continue
-        name_lower = name.lower()
-        if any(ex in name_lower for ex in [".sha256", ".md5", ".txt", "checksum", "manifest", "sig"]):
-            continue
-        # GoReleaser-style tarball: <project>_v<version>_<os>_<arch>.tar.gz
-        if name_lower.startswith(proj_lower + "_v") and os_name in name_lower and arch in name_lower:
-            print(url)
-            sys.exit(0)
-        # Direct binary: <project>-v<version>-<os>_<arch>
-        if name_lower.startswith(proj_lower + "-v") and os_name in name_lower and arch in name_lower:
-            print(url)
-            sys.exit(0)
-except Exception:
-    pass
-sys.exit(1)
-' "$OS" "$ARCH" "$proj_lower" 2>/dev/null || true)
+  local arch_variants=("$ARCH")
+  if [ "$ARCH" = "amd64" ]; then
+    arch_variants=("amd64" "x86_64")
+  elif [ "$ARCH" = "arm64" ]; then
+    arch_variants=("arm64" "aarch64")
+  fi
+
+  local candidates=()
+  for os_v in "${os_variants[@]}"; do
+    for arch_v in "${arch_variants[@]}"; do
+      candidates+=("${proj_lower}-${tag}-${os_v}-${arch_v}")
+      candidates+=("${proj_lower}_${tag}_${os_v}_${arch_v}.tar.gz")
+      candidates+=("${proj_lower}-${tag}-${os_v}-${arch_v}.tar.gz")
+    done
+  done
+
+  local matched_url=""
+  for candidate in "${candidates[@]}"; do
+    local candidate_url="https://github.com/$GITHUB_OWNER/$proj/releases/latest/download/$candidate"
+    local check_code
+    if check_code=$(curl -sSIL -o /dev/null -w "%{http_code}" "$candidate_url" 2>/dev/null); then
+      if [ "$check_code" = "200" ]; then
+        matched_url="$candidate_url"
+        break
+      fi
+    fi
+  done
 
   if [ -z "$matched_url" ]; then
-    release_fail_reason="No release asset matching $OS/$ARCH for $proj."
+    release_fail_reason="No compatible pre-compiled artifact found for $proj ($OS/$ARCH)."
     return 1
   fi
 
@@ -173,7 +159,7 @@ sys.exit(1)
       fi
       rm -rf "$temp_extract_dir"
     else
-      release_fail_reason="Download failed for the release asset of $proj."
+      release_fail_reason="Failed to download pre-compiled artifact for $proj."
     fi
     rm -f "$temp_archive"
   else
@@ -182,7 +168,7 @@ sys.exit(1)
       echo "    Successfully installed pre-compiled $proj to $install_path"
       return 0
     fi
-    release_fail_reason="Download failed for the release asset of $proj."
+    release_fail_reason="Failed to download pre-compiled artifact for $proj."
   fi
 
   return 1
