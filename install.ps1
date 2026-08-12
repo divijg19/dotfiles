@@ -18,13 +18,24 @@ $DOTFILES_RAW_URL = "https://raw.githubusercontent.com/$GITHUB_OWNER/$GITHUB_REP
 $DEFAULT_INSTALL_DIR = Join-Path $HOME ".local\bin"
 
 # 2. Architecture Detection
-$ARCH = switch ($env:PROCESSOR_ARCHITECTURE) {
-    "AMD64" { "amd64" }
-    "ARM64" { "arm64" }
-    "x86"   { "386" }
-    "ARM"   { "arm" }
+# PROCESSOR_ARCHITEW6432 reveals the native OS architecture when a 32-bit
+# PowerShell process runs on 64-bit Windows (PROCESSOR_ARCHITECTURE=x86).
+$processArch = $env:PROCESSOR_ARCHITECTURE
+$nativeArch = $env:PROCESSOR_ARCHITEW6432
+
+$ARCH = switch ($nativeArch) {
+    "AMD64" { "amd64"; break }
+    "ARM64" { "arm64"; break }
     default {
-        throw "Unsupported architecture: $env:PROCESSOR_ARCHITECTURE"
+        switch ($processArch) {
+            "AMD64" { "amd64"; break }
+            "ARM64" { "arm64"; break }
+            "x86"   { "386"; break }
+            "ARM"   { "arm"; break }
+            default {
+                throw "Unsupported architecture: $processArch"
+            }
+        }
     }
 }
 
