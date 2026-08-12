@@ -1,9 +1,10 @@
 <#
 .SYNOPSIS
-    Dotfiles binary installer release resolver (Windows / PowerShell 5.1+)
+    Dotfiles binary installer (Windows / PowerShell 5.1+)
 .DESCRIPTION
     Discovers projects from .gitmodules (locally or remotely), prompts for interactive
-    project selection, and resolves latest GitHub release assets without the GitHub API.
+    project selection and installation directory, resolves latest GitHub release assets,
+    and installs direct binary or archive assets.
 #>
 
 $ErrorActionPreference = "Stop"
@@ -12,6 +13,7 @@ $ErrorActionPreference = "Stop"
 $GITHUB_OWNER = "divijg19"
 $GITHUB_REPO = "dotfiles"
 $DOTFILES_RAW_URL = "https://raw.githubusercontent.com/$GITHUB_OWNER/$GITHUB_REPO/main"
+$DEFAULT_INSTALL_DIR = Join-Path $HOME ".local\bin"
 
 # 2. Architecture Detection
 $ARCH = switch ($env:PROCESSOR_ARCHITECTURE) {
@@ -103,7 +105,6 @@ function Resolve-LatestRelease {
                 throw "No published GitHub release for $proj."
             }
         }
-        # If it was already thrown by our code, propagate it
         if ($_.Exception.Message -match "No published GitHub release" -or $_.Exception.Message -match "Could not resolve latest release") {
             throw $_.Exception.Message
         }
@@ -182,6 +183,80 @@ function Resolve-ReleaseAsset {
     throw "No compatible Windows asset found for $proj."
 }
 
+# 6. Binary Installation
+function Install-DirectBinary {
+    param(
+        [string]$assetUrl,
+        [string]$proj,
+        [string]$targetDir
+    )
+    $tempFile = [System.IO.Path]::GetTempFileName()
+    try {
+        Invoke-WebRequest -Uri $assetUrl -OutFile $tempFile -UseBasicParsing
+        if (-not (Test-Path $tempFile) -or (Get-Item $tempFile).Length -eq 0) {
+            throw "Downloaded binary for $proj is empty or missing."
+        }
+        $destPath = Join-Path $targetDir "$proj.exe"
+        Copy-Item -Path $tempFile -Destination $destPath -Force
+        Write-Host "Successfully installed $proj to $destPath" -ForegroundColor Green
+    }
+    finally {
+        if (Test-Path $tempFile) {
+            Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Install-ArchiveAsset {
+    param(
+        [string]$assetUrl,
+        [string]$proj,
+        [string]$targetDir
+    )
+    $tempZip = [System.IO.Path]::GetTempFileName()
+    $tempExtractDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+    try {
+        Invoke-WebRequest -Uri $assetUrl -OutFile $tempZip -UseBasicParsing
+        if (-not (Test-Path $tempZip) -or (Get-Item $tempZip).Length -eq 0) {
+            throw "Downloaded archive for $proj is empty or missing."
+        }
+        New-Item -ItemType Directory -Force -Path $tempExtractDir | Out-Null
+        Expand-Archive -Path $tempZip -DestinationPath $tempExtractDir -Force
+
+        $exeName = "$proj.exe"
+        $foundExe = Get-ChildItem -Path $tempExtractDir -Recurse -File | Where-Object { $_.Name -ieq $exeName } | Select-Object -First 1
+
+        if (-not $foundExe) {
+            throw "Archive for $proj did not contain an executable named '$exeName'."
+        }
+
+        $destPath = Join-Path $targetDir "$proj.exe"
+        Copy-Item -Path $foundExe.FullName -Destination $destPath -Force
+        Write-Host "Successfully installed $proj to $destPath" -ForegroundColor Green
+    }
+    finally {
+        if (Test-Path $tempZip) {
+            Remove-Item -Path $tempZip -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path $tempExtractDir) {
+            Remove-Item -Path $tempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Install-ReleaseAsset {
+    param(
+        [pscustomobject]$resolved,
+        [string]$proj,
+        [string]$targetDir
+    )
+    switch ($resolved.Kind) {
+        "Direct"  { Install-DirectBinary -assetUrl $resolved.AssetUrl -proj $proj -targetDir $targetDir }
+        "Archive" { Install-ArchiveAsset -assetUrl $resolved.AssetUrl -proj $proj -targetDir $targetDir }
+        default   { throw "Unknown asset kind: $($resolved.Kind)" }
+    }
+}
+
 # Main Execution Flow
 try {
     Write-Host "=========================================="
@@ -214,26 +289,40 @@ try {
         exit 0
     }
 
-    # Release Resolution Demonstration
+    # Installation Directory Selection
     Write-Host ""
-    Write-Host "Resolving latest releases (API-free)..."
+    $dirInput = Read-Host "Enter installation directory [Default: $DEFAULT_INSTALL_DIR]"
+    $targetDir = if ([string]::IsNullOrWhiteSpace($dirInput)) { $DEFAULT_INSTALL_DIR } else { $dirInput.Trim() }
+
+    try {
+        New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+    }
+    catch {
+        throw "Failed to create installation directory '$targetDir': $($_.Exception.Message)"
+    }
+
+    # Installation Execution
+    Write-Host ""
+    Write-Host "Installing selected projects..."
     foreach ($projectName in $selected) {
-        Write-Host "  -> Checking $projectName..."
+        Write-Host ""
+        Write-Host "Installing $projectName..."
         try {
             $tag = Resolve-LatestRelease -owner $GITHUB_OWNER -proj $projectName
-            Write-Host "     Latest tag: $tag"
+            Write-Host "  -> Resolved tag: $tag"
 
             $resolved = Resolve-ReleaseAsset -owner $GITHUB_OWNER -proj $projectName -tag $tag -arch $ARCH
-            Write-Host "     Found asset: $($resolved.AssetName) [Kind: $($resolved.Kind)]" -ForegroundColor Green
-            Write-Host "     URL: $($resolved.AssetUrl)"
+            Write-Host "  -> Resolved asset: $($resolved.AssetName) ($($resolved.Kind))"
+
+            Install-ReleaseAsset -resolved $resolved -proj $projectName -targetDir $targetDir
         }
         catch {
-            Write-Host "     Error: $_" -ForegroundColor Yellow
+            Write-Error "Failed to install $projectName: $_"
         }
     }
 
     Write-Host ""
-    Write-Host "Release resolver check complete. (No files installed)"
+    Write-Host "Installation process complete."
     Write-Host ""
 
     exit 0
