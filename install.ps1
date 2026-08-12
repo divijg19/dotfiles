@@ -215,7 +215,7 @@ function Install-ArchiveAsset {
         [string]$proj,
         [string]$targetDir
     )
-    $tempZip = [System.IO.Path]::GetTempFileName()
+    $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) "$([System.Guid]::NewGuid().ToString()).zip"
     $tempExtractDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
     try {
         Invoke-WebRequest -Uri $assetUrl -OutFile $tempZip -UseBasicParsing
@@ -330,33 +330,29 @@ function Invoke-FallbackGoBuild {
 
     $srcDir = $null
     $tempDir = $null
-
-    $localSub = if ($PSScriptRoot) { Join-Path $PSScriptRoot "bin\$proj" } else { $null }
-    if ($localSub -and (Test-Path (Join-Path $localSub "go.mod"))) {
-        $srcDir = $localSub
-        Write-Host "Using local submodule for $proj."
-    } else {
-        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
-        New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
-        if (-not $repoUrl) {
-            $repoUrl = "https://github.com/$GITHUB_OWNER/$proj.git"
-        }
-        Write-Host "Cloning repository for $proj from $repoUrl..."
-        & git clone --depth 1 $repoUrl $tempDir
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $tempDir "go.mod"))) {
-            if (Test-Path $tempDir) {
-                Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-            }
-            Write-Host "Failed to clone repository for $proj."
-            return [pscustomobject]@{
-                Status  = "Failed"
-                Message = "Failed to clone repository for $proj."
-            }
-        }
-        $srcDir = $tempDir
-    }
-
     try {
+        $localSub = if ($PSScriptRoot) { Join-Path $PSScriptRoot "bin\$proj" } else { $null }
+        if ($localSub -and (Test-Path (Join-Path $localSub "go.mod"))) {
+            $srcDir = $localSub
+            Write-Host "Using local submodule for $proj."
+        } else {
+            $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+            New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+            if (-not $repoUrl) {
+                $repoUrl = "https://github.com/$GITHUB_OWNER/$proj.git"
+            }
+            Write-Host "Cloning repository for $proj from $repoUrl..."
+            & git clone --depth 1 $repoUrl $tempDir
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $tempDir "go.mod"))) {
+                Write-Host "Failed to clone repository for $proj."
+                return [pscustomobject]@{
+                    Status  = "Failed"
+                    Message = "Failed to clone repository for $proj."
+                }
+            }
+            $srcDir = $tempDir
+        }
+
         $buildTarget = "."
         $cmdDir = Join-Path $srcDir "cmd"
         if (Test-Path $cmdDir) {
@@ -400,6 +396,13 @@ function Invoke-FallbackGoBuild {
             Message = "Failed to build $proj from $buildTarget."
         }
     }
+    catch {
+        Write-Host "go build fallback failed: $($_.Exception.Message)"
+        return [pscustomobject]@{
+            Status  = "Failed"
+            Message = "go build failed: $($_.Exception.Message)"
+        }
+    }
     finally {
         if ($tempDir -and (Test-Path $tempDir)) {
             Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -431,13 +434,16 @@ function Invoke-FallbackGoInstall {
     }
     $modPath = $modPath.Trim()
 
-    $dirInput = Read-Host "Override install path for $proj? [Default: $targetDir]"
-    $projInstallDir = if ($dirInput) { $dirInput.Trim() } else { $targetDir }
-    New-Item -ItemType Directory -Force -Path $projInstallDir | Out-Null
-
     $oldGOBIN = $env:GOBIN
-    $env:GOBIN = $projInstallDir
+    $projInstallDir = $targetDir
     try {
+        $dirInput = Read-Host "Override install path for $proj? [Default: $targetDir]"
+        if ($dirInput) {
+            $projInstallDir = $dirInput.Trim()
+        }
+        New-Item -ItemType Directory -Force -Path $projInstallDir | Out-Null
+
+        $env:GOBIN = $projInstallDir
         Write-Host "Running go install for $modPath..."
         & go install $modPath
         $installRc = $LASTEXITCODE
@@ -453,6 +459,13 @@ function Invoke-FallbackGoInstall {
         return [pscustomobject]@{
             Status  = "Failed"
             Message = "go install failed: $modPath."
+        }
+    }
+    catch {
+        Write-Host "go install fallback failed: $($_.Exception.Message)"
+        return [pscustomobject]@{
+            Status  = "Failed"
+            Message = "go install failed: $($_.Exception.Message)"
         }
     }
     finally {
@@ -493,6 +506,13 @@ function Invoke-FallbackCustomUrl {
         return [pscustomobject]@{
             Status  = "Installed"
             Message = "Installed via custom URL."
+        }
+    }
+    catch {
+        Write-Host "Custom URL download failed: $($_.Exception.Message)"
+        return [pscustomobject]@{
+            Status  = "Failed"
+            Message = "Custom URL download failed: $($_.Exception.Message)"
         }
     }
     finally {
@@ -578,7 +598,7 @@ try {
             Write-Host "  ! $note"
             $fallbackResult = Invoke-Fallback -proj $projectName -repoUrl $selectedUrls[$projectName] -targetDir $targetDir
             $outcome = $fallbackResult.Status
-            $note = $fallbackResult.Message
+            $note = "$note; Fallback: $($fallbackResult.Message)"
         }
 
         switch ($outcome) {
