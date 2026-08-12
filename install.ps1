@@ -3,8 +3,10 @@
     Dotfiles binary installer (Windows / PowerShell 5.1+)
 .DESCRIPTION
     Discovers projects from .gitmodules (locally or remotely), prompts for interactive
-    project selection and installation directory, resolves latest GitHub release assets,
-    and installs direct binary or archive assets.
+    project selection and installation directory, resolves latest GitHub release assets
+    without the GitHub API, installs direct binary or archive assets, offers fallback
+    methods, accounts for every project as Installed/Skipped/Failed, and reports a
+    final summary with a meaningful exit status.
 #>
 
 $ErrorActionPreference = "Stop"
@@ -257,6 +259,249 @@ function Install-ReleaseAsset {
     }
 }
 
+# 7. Fallback Machinery
+function Test-CommandExists {
+    param([string]$name)
+    return $null -ne (Get-Command $name -ErrorAction SilentlyContinue)
+}
+
+function Invoke-Fallback {
+    param(
+        [string]$proj,
+        [string]$repoUrl,
+        [string]$targetDir
+    )
+
+    Write-Host ""
+    Write-Host "Could not fetch a pre-compiled binary for $proj."
+    Write-Host "Choose a fallback method:"
+    Write-Host "  1) go build (build from local submodule or a shallow on-the-fly clone)"
+    Write-Host "  2) go install (remote Go module proxy installation)"
+    Write-Host "  3) Custom URL (provide a direct download link)"
+    Write-Host "  4) Skip this project"
+
+    $fallbackChoice = $null
+    while ($null -eq $fallbackChoice) {
+        $choiceInput = Read-Host "Enter choice [1-4] (default 1)"
+        if ([string]::IsNullOrWhiteSpace($choiceInput)) {
+            $choiceInput = "1"
+        }
+        if ($choiceInput -in @("1", "2", "3", "4")) {
+            $fallbackChoice = $choiceInput
+        } else {
+            Write-Host "Invalid choice. Please enter 1-4."
+        }
+    }
+
+    switch ($fallbackChoice) {
+        "1" {
+            return Invoke-FallbackGoBuild -proj $proj -repoUrl $repoUrl -targetDir $targetDir
+        }
+        "2" {
+            return Invoke-FallbackGoInstall -proj $proj -targetDir $targetDir
+        }
+        "3" {
+            return Invoke-FallbackCustomUrl -proj $proj -targetDir $targetDir
+        }
+        "4" {
+            Write-Host "Skipping $proj."
+            return [pscustomobject]@{
+                Status  = "Skipped"
+                Message = "User selected skip."
+            }
+        }
+    }
+}
+
+function Invoke-FallbackGoBuild {
+    param(
+        [string]$proj,
+        [string]$repoUrl,
+        [string]$targetDir
+    )
+
+    if (-not (Test-CommandExists "go")) {
+        Write-Host "Go is not available on this system."
+        return [pscustomobject]@{
+            Status  = "Failed"
+            Message = "Go is not available; cannot build $proj."
+        }
+    }
+
+    $srcDir = $null
+    $tempDir = $null
+
+    $localSub = if ($PSScriptRoot) { Join-Path $PSScriptRoot "bin\$proj" } else { $null }
+    if ($localSub -and (Test-Path (Join-Path $localSub "go.mod"))) {
+        $srcDir = $localSub
+        Write-Host "Using local submodule for $proj."
+    } else {
+        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+        New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+        if (-not $repoUrl) {
+            $repoUrl = "https://github.com/$GITHUB_OWNER/$proj.git"
+        }
+        Write-Host "Cloning repository for $proj from $repoUrl..."
+        & git clone --depth 1 $repoUrl $tempDir
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $tempDir "go.mod"))) {
+            if (Test-Path $tempDir) {
+                Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            Write-Host "Failed to clone repository for $proj."
+            return [pscustomobject]@{
+                Status  = "Failed"
+                Message = "Failed to clone repository for $proj."
+            }
+        }
+        $srcDir = $tempDir
+    }
+
+    try {
+        $buildTarget = "."
+        $cmdDir = Join-Path $srcDir "cmd"
+        if (Test-Path $cmdDir) {
+            $sub = Get-ChildItem -Path $cmdDir -Directory | Select-Object -First 1
+            if ($sub) {
+                $buildTarget = ".\cmd\$($sub.Name)"
+            }
+        }
+
+        $targetInput = Read-Host "Enter build target [Default: $buildTarget]"
+        if ($targetInput) {
+            $buildTarget = $targetInput.Trim()
+        }
+
+        $dirInput = Read-Host "Override install path for $proj? [Default: $targetDir]"
+        $projInstallDir = if ($dirInput) { $dirInput.Trim() } else { $targetDir }
+        New-Item -ItemType Directory -Force -Path $projInstallDir | Out-Null
+
+        $outPath = Join-Path $projInstallDir "$proj.exe"
+        Write-Host "Building $proj locally from $buildTarget..."
+
+        Push-Location $srcDir
+        try {
+            & go build -o $outPath $buildTarget
+            $buildRc = $LASTEXITCODE
+        }
+        finally {
+            Pop-Location
+        }
+
+        if ($buildRc -eq 0 -and (Test-Path $outPath)) {
+            Write-Host "Successfully built and installed $proj to $outPath"
+            return [pscustomobject]@{
+                Status  = "Installed"
+                Message = "Installed via go build."
+            }
+        }
+        Write-Host "Failed to build $proj from $buildTarget."
+        return [pscustomobject]@{
+            Status  = "Failed"
+            Message = "Failed to build $proj from $buildTarget."
+        }
+    }
+    finally {
+        if ($tempDir -and (Test-Path $tempDir)) {
+            Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Invoke-FallbackGoInstall {
+    param(
+        [string]$proj,
+        [string]$targetDir
+    )
+
+    if (-not (Test-CommandExists "go")) {
+        Write-Host "Go is not available on this system."
+        return [pscustomobject]@{
+            Status  = "Failed"
+            Message = "Go is not available; cannot go install $proj."
+        }
+    }
+
+    $modPath = Read-Host "Enter Go module path (e.g., github.com/$GITHUB_OWNER/$proj@latest)"
+    if ([string]::IsNullOrWhiteSpace($modPath)) {
+        Write-Host "Module path cannot be empty."
+        return [pscustomobject]@{
+            Status  = "Failed"
+            Message = "Module path cannot be empty."
+        }
+    }
+    $modPath = $modPath.Trim()
+
+    $dirInput = Read-Host "Override install path for $proj? [Default: $targetDir]"
+    $projInstallDir = if ($dirInput) { $dirInput.Trim() } else { $targetDir }
+    New-Item -ItemType Directory -Force -Path $projInstallDir | Out-Null
+
+    $oldGOBIN = $env:GOBIN
+    $env:GOBIN = $projInstallDir
+    try {
+        Write-Host "Running go install for $modPath..."
+        & go install $modPath
+        $installRc = $LASTEXITCODE
+        $destPath = Join-Path $projInstallDir "$proj.exe"
+        if ($installRc -eq 0 -and (Test-Path $destPath)) {
+            Write-Host "Successfully installed $proj via go install to $projInstallDir"
+            return [pscustomobject]@{
+                Status  = "Installed"
+                Message = "Installed via go install."
+            }
+        }
+        Write-Host "Failed to install $proj via go install."
+        return [pscustomobject]@{
+            Status  = "Failed"
+            Message = "go install failed: $modPath."
+        }
+    }
+    finally {
+        $env:GOBIN = $oldGOBIN
+    }
+}
+
+function Invoke-FallbackCustomUrl {
+    param(
+        [string]$proj,
+        [string]$targetDir
+    )
+
+    $customUrl = Read-Host "Enter download URL"
+    if ([string]::IsNullOrWhiteSpace($customUrl)) {
+        Write-Host "URL cannot be empty."
+        return [pscustomobject]@{
+            Status  = "Failed"
+            Message = "URL cannot be empty."
+        }
+    }
+    $customUrl = $customUrl.Trim()
+
+    $tempFile = [System.IO.Path]::GetTempFileName()
+    try {
+        Write-Host "Downloading binary from $customUrl..."
+        Invoke-WebRequest -Uri $customUrl -OutFile $tempFile -UseBasicParsing
+        if (-not (Test-Path $tempFile) -or (Get-Item $tempFile).Length -eq 0) {
+            Write-Host "Downloaded binary is empty or missing."
+            return [pscustomobject]@{
+                Status  = "Failed"
+                Message = "Downloaded binary from custom URL is empty or missing."
+            }
+        }
+        $destPath = Join-Path $targetDir "$proj.exe"
+        Copy-Item -Path $tempFile -Destination $destPath -Force
+        Write-Host "Successfully downloaded and installed $proj to $destPath"
+        return [pscustomobject]@{
+            Status  = "Installed"
+            Message = "Installed via custom URL."
+        }
+    }
+    finally {
+        if (Test-Path $tempFile) {
+            Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 # Main Execution Flow
 try {
     Write-Host "=========================================="
@@ -276,10 +521,12 @@ try {
 
     # Interactive Project Selection
     $selected = @()
+    $selectedUrls = @{}
     foreach ($p in $projects) {
         $choice = Read-Host "Install $($p.Name)? (y/N)"
         if ($choice -match '^[Yy]$') {
             $selected += $p.Name
+            $selectedUrls[$p.Name] = $p.Url
         }
     }
 
@@ -301,12 +548,20 @@ try {
         throw "Failed to create installation directory '$targetDir': $($_.Exception.Message)"
     }
 
+    # Outcome State
+    $installed = @()
+    $skipped = @()
+    $failed = @()
+    $notes = @{}
+
     # Installation Execution
     Write-Host ""
     Write-Host "Installing selected projects..."
     foreach ($projectName in $selected) {
         Write-Host ""
         Write-Host "Installing $projectName..."
+        $outcome = $null
+        $note = ""
         try {
             $tag = Resolve-LatestRelease -owner $GITHUB_OWNER -proj $projectName
             Write-Host "  -> Resolved tag: $tag"
@@ -315,17 +570,75 @@ try {
             Write-Host "  -> Resolved asset: $($resolved.AssetName) ($($resolved.Kind))"
 
             Install-ReleaseAsset -resolved $resolved -proj $projectName -targetDir $targetDir
+            $outcome = "Installed"
+            $note = "Installed from release asset."
         }
         catch {
-            Write-Error "Failed to install $projectName: $_"
+            $note = $_.Exception.Message
+            Write-Host "  ! $note"
+            $fallbackResult = Invoke-Fallback -proj $projectName -repoUrl $selectedUrls[$projectName] -targetDir $targetDir
+            $outcome = $fallbackResult.Status
+            $note = $fallbackResult.Message
+        }
+
+        switch ($outcome) {
+            "Installed" { $installed += $projectName }
+            "Skipped"   { $skipped += $projectName }
+            default     { $failed += $projectName }
+        }
+        if ($note) {
+            $notes[$projectName] = $note
         }
     }
 
+    # Final Summary
     Write-Host ""
-    Write-Host "Installation process complete."
+    Write-Host "=========================================="
+    Write-Host "Installation Summary"
+    Write-Host "=========================================="
+    Write-Host ""
+    Write-Host "Installed:"
+    if ($installed.Count -gt 0) {
+        foreach ($p in $installed) { Write-Host "  $p" }
+    } else {
+        Write-Host "  None"
+    }
+    Write-Host "Skipped:"
+    if ($skipped.Count -gt 0) {
+        foreach ($p in $skipped) { Write-Host "  $p" }
+    } else {
+        Write-Host "  None"
+    }
+    Write-Host "Failed:"
+    if ($failed.Count -gt 0) {
+        foreach ($p in $failed) { Write-Host "  $p" }
+    } else {
+        Write-Host "  None"
+    }
+    Write-Host ""
+    Write-Host "Installation directory:"
+    Write-Host "  $targetDir"
+    Write-Host ""
+    if ($notes.Count -gt 0) {
+        Write-Host "Notes:"
+        foreach ($key in $notes.Keys) {
+            Write-Host "  $key — $($notes[$key])"
+        }
+        Write-Host ""
+    }
+    if ($failed.Count -gt 0) {
+        Write-Host "Installation completed with issues."
+    } else {
+        Write-Host "Installation completed successfully."
+    }
+    Write-Host "Make sure $targetDir is in your PATH."
     Write-Host ""
 
-    exit 0
+    if ($failed.Count -gt 0) {
+        exit 1
+    } else {
+        exit 0
+    }
 }
 catch {
     Write-Error $_.Exception.Message
