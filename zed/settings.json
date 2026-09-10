@@ -1,6 +1,8 @@
 // ── Editor ──
 // Only explicit deviations from Zed defaults
 {
+  "cli_default_open_behavior": "existing_window",
+  "disable_ai": true,
   "autosave": "on_focus_change",
   "vim_mode": true,
   "terminal": {
