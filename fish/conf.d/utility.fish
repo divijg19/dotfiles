@@ -1,4 +1,5 @@
 abbr -a cls clear
+
 abbr -a tree 'eza --tree --icons'
 abbr -a ls 'eza --icons --group-directories-first'
 abbr -a ll 'eza -lh --group-directories-first'
