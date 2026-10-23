@@ -27,6 +27,7 @@
 
 [gid]
   profile = divijg19
+  owner = divijg19
   sshHost = github-divijg19
 
 [gpg "ssh"]
