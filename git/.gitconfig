@@ -1,20 +1,35 @@
 [init]
-	defaultBranch = main
+  defaultBranch = main
 [user]
-	name = Divij
-	email = 148875733+divijg19@users.noreply.github.com
+  name = Divij
+  email = 148875733+divijg19@users.noreply.github.com
+  signingkey = ~/.ssh/id_ed25519_divijg19.pub
+  useConfigOnly = true
+
 [credential "https://github.com"]
-	helper =
-	helper = !/usr/bin/gh auth git-credential
+  helper =
+  helper = !/usr/bin/gh auth git-credential
 [credential "https://gist.github.com"]
-	helper =
-	helper = !/usr/bin/gh auth git-credential
+  helper =
+  helper = !/usr/bin/gh auth git-credential
+
+[gpg]
+  format = ssh
+[commit]
+  gpgsign = true
 [core]
-	editor = nvim
+  editor = nvim
 [filter "lfs"]
-	clean = git-lfs clean -- %f
-	smudge = git-lfs smudge -- %f
-	process = git-lfs filter-process
-	required = true
+  clean = git-lfs clean -- %f
+  smudge = git-lfs smudge -- %f
+  process = git-lfs filter-process
+  required = true
 [include]
-	path = ~/.gitconfig-local
+  path = ~/.gitconfig-local
+
+[gid]
+  profile = divijg19
+  sshHost = github-divijg19
+
+[gpg "ssh"]
+  allowedSignersFile = /home/kamikuma/.ssh/allowed_signers
