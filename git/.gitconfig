@@ -24,8 +24,6 @@
   smudge = git-lfs smudge -- %f
   process = git-lfs filter-process
   required = true
-[include]
-  path = ~/.gitconfig-local
 
 [gid]
   profile = divijg19
@@ -33,3 +31,6 @@
 
 [gpg "ssh"]
   allowedSignersFile = /home/kamikuma/.ssh/allowed_signers
+
+[include]
+  path = ~/.gitconfig-local
