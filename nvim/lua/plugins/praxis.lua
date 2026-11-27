@@ -2,7 +2,7 @@
 
 return {
   {
-    dir = "~/Desktop/divijg19/Projects/Praxis/nvim",
+    dir = "~/Desktop/divijg19/Praxis/nvim",
     name = "praxis",
     cmd = "Praxis",
   },
